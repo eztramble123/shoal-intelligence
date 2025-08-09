@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import Image from 'next/image';
 
 interface SharedLayoutProps {
@@ -11,6 +11,7 @@ interface SharedLayoutProps {
 
 export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
   const router = useRouter();
+  const pathname = usePathname();
   const [searchTerm, setSearchTerm] = useState('');
 
   const navigate = (page: string) => {
@@ -21,11 +22,22 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
     }
   };
 
+  // Map pathname to currentPage value for reliable active state detection
+  const getCurrentPage = () => {
+    if (pathname === '/') return 'dashboard';
+    if (pathname === '/token-matrix') return 'token-matrix';
+    if (pathname === '/venture-intelligence') return 'venture-intelligence';  
+    if (pathname === '/listings-feed') return 'listings-feed';
+    return currentPage; // fallback to prop
+  };
+  
+  const activePage = getCurrentPage();
+
   const navigationItems = [
-    { icon: "/dashboard.svg", label: "Dashboard", path: 'dashboard', isActive: currentPage === 'dashboard' },
-    { icon: "/file.svg", label: "Listings Parity Analysis", path: 'token-matrix', isActive: currentPage === 'token-matrix' },
-    { icon: "/lightbulb.svg", label: "Venture Intelligence", path: 'venture-intelligence', isActive: currentPage === 'venture-intelligence' },
-    { icon: "/split_arrow.svg", label: "Recent Listings", path: 'listings-feed', isActive: currentPage === 'listings-feed' }
+    { icon: "/dashboard.svg", label: "Dashboard", path: 'dashboard', isActive: activePage === 'dashboard' },
+    { icon: "/file.svg", label: "Listings Parity Analysis", path: 'token-matrix', isActive: activePage === 'token-matrix' },
+    { icon: "/lightbulb.svg", label: "Venture Intelligence", path: 'venture-intelligence', isActive: activePage === 'venture-intelligence' },
+    { icon: "/split_arrow.svg", label: "Recent Listings", path: 'listings-feed', isActive: activePage === 'listings-feed' }
   ];
 
   return (
