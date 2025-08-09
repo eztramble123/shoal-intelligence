@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
 import { processParityData } from '@/app/lib/parity-utils';
 import { RawParityRecord } from '@/app/types/parity';
 
 export async function GET() {
   try {
+    // Check authentication
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     // Get environment variables
     const apiKey = process.env.BLAKE_API_KEY;
     

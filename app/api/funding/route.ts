@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
 import { processFundingData } from '@/app/lib/funding-utils';
 import { RawFundingRecord } from '@/app/types/funding';
 
 export async function GET() {
   try {
+    // Check authentication
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     // Get environment variables
     const apiUrl = process.env.BLAKE_API_URL;
     const apiKey = process.env.BLAKE_API_KEY;

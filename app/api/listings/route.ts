@@ -1,9 +1,19 @@
 import { NextResponse } from 'next/server';
+import { getServerSession } from 'next-auth/next';
 import { processListingsData } from '@/app/lib/listings-utils';
 import { RawListingRecord } from '@/app/types/listings';
 
 export async function GET() {
   try {
+    // Check authentication
+    const session = await getServerSession();
+    if (!session) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      );
+    }
+
     // Get environment variables
     const apiKey = process.env.BLAKE_API_KEY;
     
