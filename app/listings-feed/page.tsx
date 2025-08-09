@@ -1,344 +1,804 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { Search, Filter, Download, Bell, TrendingUp, AlertCircle, CheckCircle, ExternalLink, Play, Pause } from 'lucide-react';
-import { DashboardLayout } from '@/components/layout/dashboard-layout';
-import { MetricCard } from '@/components/dashboard/metric-card';
-import { DataTable, Column } from '@/components/dashboard/data-table';
-import { ChartWrapper } from '@/components/dashboard/chart-wrapper';
-import { 
-  sampleListingActivity, 
-  sampleTokens,
-  EXCHANGES,
-  ListingActivity,
-  formatCurrency 
-} from '@/lib/sample-data';
+import { useState, useEffect, useCallback } from 'react';
+import { SharedLayout } from '@/components/shared-layout';
+import { Treemap, ResponsiveContainer } from 'recharts';
+import { ListingsDashboardData } from '@/app/types/listings';
+import { CardSkeleton, Skeleton } from '@/components/skeleton';
 
-interface ListingFeedData {
-  activity: ListingActivity;
-  timeAgo: string;
-  isNew: boolean;
-  impactScore: number;
-  priceImpact?: number;
-}
+const RecentListingsTrackerFeed = () => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedExchange, setSelectedExchange] = useState('All Exchanges');
+  const [selectedType, setSelectedType] = useState('All types');
+  const [liveUpdates, setLiveUpdates] = useState(true);
+  const [listingsData, setListingsData] = useState<ListingsDashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-const ACTIVITY_TYPES = ['All', 'Listings', 'Delistings'];
-
-// Mock real-time data generation
-const generateMockActivity = (): ListingActivity => {
-  const randomToken = sampleTokens[Math.floor(Math.random() * sampleTokens.length)];
-  const randomExchange = EXCHANGES[Math.floor(Math.random() * EXCHANGES.length)];
-  const timestamp = new Date().toISOString();
-  
-  return {
-    id: Date.now().toString(),
-    token: randomToken,
-    exchange: randomExchange,
-    timestamp,
-    type: Math.random() > 0.9 ? 'delisting' : 'listing',
-    volume: Math.floor(Math.random() * 50000000) + 1000000
-  };
-};
-
-export default function ListingsFeed() {
-  const [selectedType, setSelectedType] = useState('All');
-  const [searchTerm, setSearchTerm] = useState('');
-  const [isRealTime, setIsRealTime] = useState(true);
-  const [activities, setActivities] = useState(sampleListingActivity);
-  const [notifications, setNotifications] = useState(true);
-
-  // Simulate real-time updates
-  useEffect(() => {
-    if (!isRealTime) return;
-
-    const interval = setInterval(() => {
-      if (Math.random() > 0.7) { // 30% chance of new activity
-        const newActivity = generateMockActivity();
-        setActivities(prev => [newActivity, ...prev].slice(0, 100)); // Keep last 100
+  // Fetch listings data
+  const fetchListingsData = useCallback(async () => {
+    try {
+      const response = await fetch('/api/listings');
+      if (!response.ok) {
+        throw new Error('Failed to fetch listings data');
       }
-    }, 5000); // Every 5 seconds
-
-    return () => clearInterval(interval);
-  }, [isRealTime]);
-
-  const processedActivities: ListingFeedData[] = activities.map(activity => {
-    const activityTime = new Date(activity.timestamp);
-    const now = new Date();
-    const diffMinutes = Math.floor((now.getTime() - activityTime.getTime()) / (1000 * 60));
-    
-    let timeAgo: string;
-    if (diffMinutes < 1) {
-      timeAgo = 'Just now';
-    } else if (diffMinutes < 60) {
-      timeAgo = `${diffMinutes}m ago`;
-    } else if (diffMinutes < 1440) {
-      timeAgo = `${Math.floor(diffMinutes / 60)}h ago`;
-    } else {
-      timeAgo = `${Math.floor(diffMinutes / 1440)}d ago`;
+      const data = await response.json();
+      setListingsData(data);
+      setError(null);
+    } catch (err) {
+      console.error('Error fetching listings data:', err);
+      setError('Failed to load listings data');
+    } finally {
+      if (loading) setLoading(false);
     }
+  }, [loading]);
 
-    // Calculate impact score based on volume and token popularity
-    const impactScore = Math.min(
-      100,
-      ((activity.volume || 0) / 10000000) * 40 + 
-      (activity.token.trending ? (6 - activity.token.trending) * 10 : 0) + 
-      (activity.token.marketCap / 100000000) * 2
-    );
+  // Initial load and 30-second polling
+  useEffect(() => {
+    fetchListingsData();
+    
+    if (liveUpdates) {
+      const interval = setInterval(fetchListingsData, 30000); // 30 seconds
+      return () => clearInterval(interval);
+    }
+  }, [liveUpdates, fetchListingsData]);
 
-    return {
-      activity,
-      timeAgo,
-      isNew: diffMinutes < 5,
-      impactScore,
-      priceImpact: activity.type === 'listing' ? 
-        Math.random() * 20 - 5 : // -5% to +15% for listings
-        Math.random() * -10 - 2   // -12% to -2% for delistings
+
+  // Get data from API or use fallbacks
+  const tokenCards = listingsData?.tokenCards || [];
+  const treemapData = listingsData?.treemapData || [];
+  const adoptionMetrics = listingsData?.adoptionMetrics || [];
+  const exchangeActivity = listingsData?.exchangeActivity || [];
+  const fastestGrowing = listingsData?.fastestGrowing || [];
+  const newestListings = listingsData?.newestListings || [];
+  const liveListings = listingsData?.liveListings || [];
+
+  const CustomTreemapContent = (props: {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    name: string;
+    value: number;
+    fill: string;
+    payload?: {
+      chartData?: number[];
+      exchangesCount?: number;
     };
-  });
-
-  const filteredActivities = processedActivities.filter(item => {
-    const matchesType = selectedType === 'All' || 
-      (selectedType === 'Listings' && item.activity.type === 'listing') ||
-      (selectedType === 'Delistings' && item.activity.type === 'delisting');
+  }) => {
+    const { x, y, width, height, name, value, fill, payload } = props;
+    const chartData = payload?.chartData || [];
     
-    const matchesSearch = searchTerm === '' || 
-      item.activity.token.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.activity.token.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      item.activity.exchange.toLowerCase().includes(searchTerm.toLowerCase());
+    // Create sparkline points for the chart
+    const createSparklinePoints = (data: number[]) => {
+      if (!data.length) return '';
+      
+      const chartWidth = Math.max(0, width - 20);
+      const chartHeight = Math.max(0, height * 0.3);
+      const chartX = x + 10;
+      const chartY = y + height - chartHeight - 10;
+      
+      const maxValue = Math.max(...data);
+      const minValue = Math.min(...data);
+      const range = maxValue - minValue || 1;
+      
+      return data.map((value, index) => {
+        const pointX = chartX + (index / (data.length - 1)) * chartWidth;
+        const pointY = chartY + chartHeight - ((value - minValue) / range) * chartHeight;
+        return `${pointX},${pointY}`;
+      }).join(' ');
+    };
     
-    return matchesType && matchesSearch;
-  });
-
-  // Statistics
-  const todayListings = filteredActivities.filter(a => {
-    const today = new Date().toDateString();
-    return new Date(a.activity.timestamp).toDateString() === today && a.activity.type === 'listing';
-  }).length;
-
-  const activeExchanges = new Set(filteredActivities.map(a => a.activity.exchange)).size;
-  const averageImpact = filteredActivities.length > 0 ?
-    filteredActivities.reduce((sum, a) => sum + a.impactScore, 0) / filteredActivities.length : 0;
-
-  // Hourly activity chart data
-  const hourlyData = Array.from({ length: 24 }, (_, i) => {
-    const hour = i;
-    const count = filteredActivities.filter(a => {
-      const activityHour = new Date(a.activity.timestamp).getHours();
-      return activityHour === hour;
-    }).length;
-    return { hour: hour.toString().padStart(2, '0'), count };
-  });
-
-  const columns: Column<ListingFeedData>[] = [
-    {
-      key: 'status',
-      header: '',
-      width: '50px',
-      render: (item) => (
-        <div className="flex items-center">
-          {item.isNew && <div className="w-2 h-2 bg-[var(--dashboard-green)] rounded-full animate-pulse" />}
-          {item.activity.type === 'listing' ? (
-            <CheckCircle className="dashboard-icon-sm text-[var(--dashboard-green)] ml-2" />
-          ) : (
-            <AlertCircle className="dashboard-icon-sm text-[var(--dashboard-red)] ml-2" />
-          )}
-        </div>
-      )
-    },
-    {
-      key: 'token',
-      header: 'Token',
-      width: '200px',
-      sortable: true,
-      render: (item) => (
-        <div>
-          <div className="text-[var(--dashboard-text-primary)] font-medium flex items-center">
-            {item.activity.token.name} ({item.activity.token.symbol})
-            <ExternalLink className="dashboard-icon-sm ml-2 text-[var(--dashboard-text-muted)] cursor-pointer" />
-          </div>
-          <div className="text-[var(--dashboard-text-secondary)] text-xs">
-            {item.activity.token.category} • {item.activity.token.chain}
-            {item.activity.token.trending && (
-              <span className="ml-2 text-[var(--dashboard-blue)]">Trending #{item.activity.token.trending}</span>
+    return (
+      <g>
+        <rect
+          x={x}
+          y={y}
+          width={width}
+          height={height}
+          fill={fill}
+          stroke="#212228"
+          strokeWidth={1}
+          style={{
+            cursor: 'pointer'
+          }}
+        />
+        {width > 80 && height > 50 && (
+          <>
+            {/* Name label */}
+            <text
+              x={x + width / 2}
+              y={y + 20}
+              textAnchor="middle"
+              fill="white"
+              stroke="none"
+              fontSize={Math.min(12, width / 8)}
+              fontWeight="500"
+              style={{ fill: 'white' }}
+            >
+              {name}
+            </text>
+            
+            {/* Exchange count */}
+            <text
+              x={x + width / 2}
+              y={y + height / 2 - 5}
+              textAnchor="middle"
+              fill="white"
+              stroke="none"
+              fontSize={Math.min(16, width / 6)}
+              fontWeight="700"
+              style={{ fill: 'white' }}
+            >
+              {payload?.exchangesCount || Math.floor(value / 10)}
+            </text>
+            
+            {/* Exchanges label */}
+            <text
+              x={x + width / 2}
+              y={y + height / 2 + 12}
+              textAnchor="middle"
+              fill="white"
+              stroke="none"
+              fontSize={Math.min(10, width / 10)}
+              fontWeight="400"
+              style={{ fill: 'white', opacity: 0.8 }}
+            >
+              Exchanges
+            </text>
+            
+            {/* Mini sparkline chart */}
+            {chartData.length > 0 && width > 100 && height > 80 && (
+              <polyline
+                fill="none"
+                stroke="#ffffff"
+                strokeWidth={1.5}
+                strokeOpacity={0.8}
+                points={createSparklinePoints(chartData)}
+              />
             )}
-          </div>
-        </div>
-      )
-    },
-    {
-      key: 'exchange',
-      header: 'Exchange',
-      sortable: true,
-      render: (item) => (
-        <span className="text-[var(--dashboard-text-primary)] font-medium">
-          {item.activity.exchange}
-        </span>
-      )
-    },
-    {
-      key: 'type',
-      header: 'Type',
-      render: (item) => (
-        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-          item.activity.type === 'listing' 
-            ? 'bg-gray-100 dark:bg-gray-800 text-[var(--dashboard-green)]'
-            : 'bg-gray-100 dark:bg-gray-800 text-[var(--dashboard-red)]'
-        }`}>
-          {item.activity.type === 'listing' ? 'Listed' : 'Delisted'}
-        </span>
-      )
-    },
-    {
-      key: 'volume',
-      header: 'Volume (24h)',
-      sortable: true,
-      render: (item) => (
-        <span className="text-[var(--dashboard-text-primary)] font-medium">
-          {item.activity.volume ? formatCurrency(item.activity.volume) : 'N/A'}
-        </span>
-      )
-    },
-    {
-      key: 'impact',
-      header: 'Impact',
-      sortable: true,
-      render: (item) => (
-        <div className="flex items-center space-x-2">
-          <div className="w-16 h-2 rounded-full bg-gray-200 dark:bg-gray-700 overflow-hidden">
-            <div 
-              className={`h-full rounded-full ${
-                item.impactScore > 70 ? 'bg-[var(--dashboard-red)]' :
-                item.impactScore > 40 ? 'bg-[var(--dashboard-orange)]' :
-                'bg-[var(--dashboard-green)]'
-              }`}
-              style={{ width: `${Math.min(100, item.impactScore)}%` }}
+            
+            {/* Status indicator */}
+            <circle
+              cx={x + 8}
+              cy={y + 8}
+              r={3}
+              fill="#ffffff"
+              opacity={0.8}
             />
+          </>
+        )}
+        {width > 40 && height > 30 && width <= 80 && (
+          <>
+            {/* Simplified view for smaller rectangles */}
+            <text
+              x={x + width / 2}
+              y={y + height / 2 - 5}
+              textAnchor="middle"
+              fill="white"
+              stroke="none"
+              fontSize={10}
+              fontWeight="500"
+              style={{ fill: 'white' }}
+            >
+              {name.split(' ')[0]}
+            </text>
+            <text
+              x={x + width / 2}
+              y={y + height / 2 + 10}
+              textAnchor="middle"
+              fill="white"
+              stroke="none"
+              fontSize={12}
+              fontWeight="700"
+              style={{ fill: 'white' }}
+            >
+              {payload?.exchangesCount || Math.floor(value / 10)}
+            </text>
+          </>
+        )}
+      </g>
+    );
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <SharedLayout currentPage="listings-feed">
+        <div style={{
+          padding: '30px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
+        }}>
+          {/* Header Skeleton */}
+          <div style={{ marginBottom: '30px' }}>
+            <Skeleton height="24px" width="300px" style={{ marginBottom: '10px' }} />
+            <Skeleton height="14px" width="450px" />
           </div>
-          <span className="text-xs text-[var(--dashboard-text-secondary)]">
-            {Math.round(item.impactScore)}
-          </span>
+
+          {/* Search and Filters Skeleton */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '2fr 1fr 1fr auto',
+            gap: '16px',
+            marginBottom: '40px'
+          }}>
+            <Skeleton height="36px" width="100%" />
+            <Skeleton height="36px" width="100%" />
+            <Skeleton height="36px" width="100%" />
+            <Skeleton height="36px" width="140px" />
+          </div>
+
+          {/* Two Column Layout Skeleton */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr',
+            gap: '30px',
+            marginBottom: '40px'
+          }}>
+            {/* Left Column - Token Cards Skeleton */}
+            <CardSkeleton>
+              <Skeleton height="18px" width="150px" style={{ marginBottom: '20px' }} />
+              <div style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(2, 1fr)',
+                gap: '16px'
+              }}>
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} style={{
+                    background: '#13141a',
+                    borderRadius: '8px',
+                    padding: '16px',
+                    border: '1px solid #2a2b35'
+                  }}>
+                    <div style={{ marginBottom: '12px' }}>
+                      <Skeleton height="16px" width="80px" style={{ marginBottom: '4px' }} />
+                      <Skeleton height="14px" width="120px" />
+                    </div>
+                    <Skeleton height="12px" width="100%" style={{ marginBottom: '8px' }} />
+                    <div style={{ display: 'flex', gap: '16px' }}>
+                      <Skeleton height="12px" width="60px" />
+                      <Skeleton height="12px" width="50px" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardSkeleton>
+
+            {/* Right Column - Treemap Skeleton */}
+            <CardSkeleton>
+              <Skeleton height="18px" width="180px" style={{ marginBottom: '20px' }} />
+              <div style={{
+                height: '300px',
+                background: '#13141a',
+                borderRadius: '8px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexWrap: 'wrap',
+                gap: '4px',
+                padding: '8px'
+              }}>
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton
+                    key={i}
+                    width={`${60 + Math.random() * 80}px`}
+                    height={`${40 + Math.random() * 60}px`}
+                    borderRadius="4px"
+                  />
+                ))}
+              </div>
+            </CardSkeleton>
+          </div>
+
+          {/* Metrics Row Skeleton */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '20px',
+            marginBottom: '40px'
+          }}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <CardSkeleton key={i}>
+                <Skeleton height="16px" width="120px" style={{ marginBottom: '16px' }} />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                  {Array.from({ length: 3 }).map((_, j) => (
+                    <div key={j}>
+                      <Skeleton height="12px" width="100%" style={{ marginBottom: '4px' }} />
+                      <Skeleton height="14px" width="60px" />
+                    </div>
+                  ))}
+                </div>
+              </CardSkeleton>
+            ))}
+          </div>
+
+          {/* Live Feed Skeleton */}
+          <CardSkeleton>
+            <Skeleton height="18px" width="200px" style={{ marginBottom: '20px' }} />
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {Array.from({ length: 8 }).map((_, i) => (
+                <div key={i} style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '12px 16px',
+                  background: '#13141a',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <Skeleton width="60px" height="14px" />
+                    <Skeleton width="80px" height="14px" />
+                    <Skeleton width="100px" height="14px" />
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <Skeleton width="50px" height="14px" />
+                    <Skeleton width="20px" height="20px" borderRadius="50%" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardSkeleton>
         </div>
-      )
-    },
-    {
-      key: 'priceImpact',
-      header: 'Price Impact',
-      render: (item) => (
-        item.priceImpact ? (
-          <span className={`font-medium ${
-            item.priceImpact > 0 ? 'text-[var(--dashboard-green)]' : 'text-[var(--dashboard-red)]'
-          }`}>
-            {item.priceImpact > 0 ? '+' : ''}{item.priceImpact.toFixed(1)}%
-          </span>
-        ) : (
-          <span className="text-[var(--dashboard-text-muted)]">N/A</span>
-        )
-      )
-    },
-    {
-      key: 'time',
-      header: 'Time',
-      sortable: true,
-      render: (item) => (
-        <div className="text-right">
-          <div className="text-[var(--dashboard-text-primary)]">
-            {item.timeAgo}
-          </div>
-          <div className="text-[var(--dashboard-text-secondary)] text-xs">
-            {new Date(item.activity.timestamp).toLocaleTimeString('en-US', {
-              hour: '2-digit',
-              minute: '2-digit'
-            })}
-          </div>
+      </SharedLayout>
+    );
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <SharedLayout currentPage="listings-feed">
+        <div style={{
+          padding: '30px',
+          textAlign: 'center',
+          color: '#ef4444'
+        }}>
+          {error}
         </div>
-      )
-    }
-  ];
+      </SharedLayout>
+    );
+  }
 
   return (
-    <DashboardLayout>
-      {/* Key Metrics */}
-      <div className="dashboard-grid-4">
-        <MetricCard
-          label="Today's Listings"
-          value={todayListings}
-          change={{ value: "+12", type: "positive" }}
-          icon={<CheckCircle className="dashboard-icon" />}
-        />
-        <MetricCard
-          label="Active Exchanges"
-          value={activeExchanges}
-          icon={<TrendingUp className="dashboard-icon" />}
-        />
-        <MetricCard
-          label="Average Impact Score"
-          value={Math.round(averageImpact)}
-          change={{ value: "+5.2", type: "positive" }}
-        />
-        <MetricCard
-          label="Total Activities"
-          value={filteredActivities.length}
-        />
-      </div>
+    <SharedLayout currentPage="listings-feed">
+      <div style={{
+        padding: '30px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
+      }}>
+        {/* Header */}
+        <div style={{
+          marginBottom: '30px'
+        }}>
+          <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
+            Recent Listings Tracker Feed
+          </h1>
+          <p style={{ fontSize: '14px', color: '#9ca3af' }}>
+            Real-time listing intelligence and performance tracking
+          </p>
+        </div>
 
-      {/* Real-time Controls & Charts */}
-      <div className="dashboard-grid-2">
-        {/* Real-time Controls */}
-        <div className="dashboard-card">
-          <div className="dashboard-card-header">
-            <div>
-              <h3 className="dashboard-card-title flex items-center">
-                <Bell className="dashboard-icon-sm mr-2" />
-                Real-time Alerts
-              </h3>
-              <p className="dashboard-card-subtitle">Live listing notifications</p>
-            </div>
-            <div className="flex items-center space-x-2">
-              <button
-                onClick={() => setIsRealTime(!isRealTime)}
-                className={`dashboard-btn dashboard-btn-sm ${
-                  isRealTime ? 'dashboard-btn-success' : 'dashboard-btn-secondary'
-                }`}
-              >
-                {isRealTime ? (
-                  <><Pause className="dashboard-icon-sm mr-1" />Live</>
-                ) : (
-                  <><Play className="dashboard-icon-sm mr-1" />Paused</>
-                )}
-              </button>
-            </div>
-          </div>
-          
-          <div className="space-y-4">
-            <label className="flex items-center space-x-2">
-              <input
-                type="checkbox"
-                className="dashboard-checkbox"
-                checked={notifications}
-                onChange={(e) => setNotifications(e.target.checked)}
-              />
-              <span className="text-[var(--dashboard-text-secondary)] text-sm">Browser notifications</span>
-            </label>
-            
-            <div className="space-y-2">
-              <h4 className="text-[var(--dashboard-text-primary)] font-medium">Recent Activity</h4>
-              {filteredActivities.slice(0, 5).map((activity) => (
-                <div key={activity.activity.id} className="flex items-center justify-between p-2 bg-[var(--dashboard-bg)] rounded">
-                  <div className="flex items-center space-x-2">
-                    {activity.activity.type === 'listing' ? (
-                      <CheckCircle className="dashboard-icon-sm text-[var(--dashboard-green)]" />
-                    ) : (
-                      <AlertCircle className="dashboard-icon-sm text-[var(--dashboard-red)]" />
-                    )}
-                    <span className="text-[var(--dashboard-text-primary)] text-sm">
-                      {activity.activity.token.symbol}
+        {/* Adoption Map Section */}
+        <div style={{ marginBottom: '40px' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#ffffff' }}>
+            Adoption Map
+          </h2>
+          <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
+            Assets by Exchange Listings
+          </p>
+
+          {/* Token Cards Grid */}
+          <div style={{ marginBottom: '30px' }}>
+            {/* Top Row - 3 cards */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, 1fr)',
+              gap: '16px',
+              marginBottom: '16px'
+            }}>
+              {tokenCards.slice(0, 3).map((token, index) => (
+                <div key={index} style={{
+                  background: '#1A1B1E',
+                  border: '1px solid #212228',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#1e1f24';
+                  e.currentTarget.style.borderColor = '#3a3b45';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#1A1B1E';
+                  e.currentTarget.style.borderColor = '#212228';
+                }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    marginBottom: '12px'
+                  }}>
+                    <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                      {token.symbol}
                     </span>
-                    <span className="text-[var(--dashboard-text-secondary)] text-xs">
-                      on {activity.activity.exchange}
+                    <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+                      {token.name}
+                    </span>
+                    <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+                      • {token.exchangeCount} exchanges
                     </span>
                   </div>
-                  <span className="text-[var(--dashboard-text-muted)] text-xs">
-                    {activity.timeAgo}
+                  <div style={{ marginBottom: '12px' }}>
+                    <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>
+                      Listed on:
+                    </p>
+                    <div 
+                      style={{ position: 'relative' }}
+                      onMouseEnter={(e) => {
+                        if (token.exchanges.length > 10) {
+                          const tooltip = e.currentTarget.querySelector('.custom-tooltip');
+                          if (tooltip) {
+                            (tooltip as HTMLElement).style.opacity = '1';
+                            (tooltip as HTMLElement).style.visibility = 'visible';
+                          }
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (token.exchanges.length > 10) {
+                          const tooltip = e.currentTarget.querySelector('.custom-tooltip');
+                          if (tooltip) {
+                            (tooltip as HTMLElement).style.opacity = '0';
+                            (tooltip as HTMLElement).style.visibility = 'hidden';
+                          }
+                        }
+                      }}
+                    >
+                      <p 
+                        style={{ 
+                          fontSize: '12px', 
+                          color: '#e4e4e7', 
+                          lineHeight: '1.4',
+                          cursor: token.exchanges.length > 10 ? 'pointer' : 'default'
+                        }}
+                      >
+                        {token.exchanges.length > 10 
+                          ? token.exchanges.slice(0, 10).join(', ') + '...'
+                          : token.listedOn
+                        }
+                      </p>
+                      {token.exchanges.length > 10 && (
+                        <div 
+                          className="custom-tooltip"
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: '0',
+                            right: '0',
+                            background: '#13141a',
+                            border: '1px solid #2a2b35',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            fontSize: '12px',
+                            color: '#e4e4e7',
+                            lineHeight: '1.4',
+                            zIndex: 1000,
+                            opacity: '0',
+                            visibility: 'hidden',
+                            transition: 'opacity 0.2s ease, visibility 0.2s ease',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                            marginTop: '4px'
+                          }}
+                        >
+                          <div style={{ fontSize: '10px', color: '#9ca3af', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            All {token.exchangeCount} Exchanges:
+                          </div>
+                          {token.listedOn}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    fontSize: '12px'
+                  }}>
+                    <span style={{ color: '#9ca3af' }}>
+                      24h Adoption: <span style={{ color: '#ffffff' }}>{token.adoption24h}</span>
+                    </span>
+                    <span style={{ color: '#9ca3af' }}>
+                      Momentum: <span style={{ color: token.momentumColor, fontWeight: '500' }}>
+                        {token.momentum}{token.momentum === 'VERY HIGH' || token.momentum === 'HIGH' ? '↗' : 
+                                token.momentum === 'LOW' ? '↘' : ''}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            
+            {/* Bottom Row - Remaining cards span full width */}
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: `repeat(${tokenCards.slice(3).length}, 1fr)`,
+              gap: '16px'
+            }}>
+              {tokenCards.slice(3).map((token, index) => (
+                <div key={index + 3} style={{
+                  background: '#1A1B1E',
+                  border: '1px solid #212228',
+                  borderRadius: '12px',
+                  padding: '20px',
+                  transition: 'all 0.3s ease',
+                  cursor: 'pointer'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#1e1f24';
+                  e.currentTarget.style.borderColor = '#3a3b45';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#1A1B1E';
+                  e.currentTarget.style.borderColor = '#212228';
+                }}
+                >
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px',
+                    marginBottom: '12px'
+                  }}>
+                    <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                      {token.symbol}
+                    </span>
+                    <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+                      {token.name}
+                    </span>
+                    <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+                      • {token.exchangeCount} {token.symbol === '$NEWT' ? 'exch...' : 'exchanges'}
+                    </span>
+                  </div>
+                  <div style={{ marginBottom: '12px' }}>
+                    <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>
+                      Listed on:
+                    </p>
+                    <div 
+                      style={{ position: 'relative' }}
+                      onMouseEnter={(e) => {
+                        if (token.exchanges.length > 10) {
+                          const tooltip = e.currentTarget.querySelector('.custom-tooltip');
+                          if (tooltip) {
+                            (tooltip as HTMLElement).style.opacity = '1';
+                            (tooltip as HTMLElement).style.visibility = 'visible';
+                          }
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        if (token.exchanges.length > 10) {
+                          const tooltip = e.currentTarget.querySelector('.custom-tooltip');
+                          if (tooltip) {
+                            (tooltip as HTMLElement).style.opacity = '0';
+                            (tooltip as HTMLElement).style.visibility = 'hidden';
+                          }
+                        }
+                      }}
+                    >
+                      <p 
+                        style={{ 
+                          fontSize: '12px', 
+                          color: '#e4e4e7', 
+                          lineHeight: '1.4',
+                          cursor: token.exchanges.length > 10 ? 'pointer' : 'default'
+                        }}
+                      >
+                        {token.exchanges.length > 10 
+                          ? token.exchanges.slice(0, 10).join(', ') + '...'
+                          : token.listedOn
+                        }
+                      </p>
+                      {token.exchanges.length > 10 && (
+                        <div 
+                          className="custom-tooltip"
+                          style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: '0',
+                            right: '0',
+                            background: '#13141a',
+                            border: '1px solid #2a2b35',
+                            borderRadius: '8px',
+                            padding: '12px',
+                            fontSize: '12px',
+                            color: '#e4e4e7',
+                            lineHeight: '1.4',
+                            zIndex: 1000,
+                            opacity: '0',
+                            visibility: 'hidden',
+                            transition: 'opacity 0.2s ease, visibility 0.2s ease',
+                            boxShadow: '0 4px 12px rgba(0, 0, 0, 0.3)',
+                            marginTop: '4px'
+                          }}
+                        >
+                          <div style={{ fontSize: '10px', color: '#9ca3af', marginBottom: '6px', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                            All {token.exchangeCount} Exchanges:
+                          </div>
+                          {token.listedOn}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '16px',
+                    fontSize: '12px'
+                  }}>
+                    <span style={{ color: '#9ca3af' }}>
+                      24h: <span style={{ 
+                        color: token.adoption24h === 'NEW' ? token.momentumColor : '#ffffff' 
+                      }}>{token.adoption24h}</span>
+                    </span>
+                    <span style={{ color: '#9ca3af' }}>
+                      Mom.: <span style={{ color: token.momentumColor, fontWeight: '500' }}>
+                        {token.momentum}{token.momentum === 'LOW' ? '↘' : ''}
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Success Tracking Treemap */}
+          <div style={{
+            background: '#1A1B1E',
+            borderRadius: '12px',
+            padding: '24px',
+            border: '1px solid #212228'
+          }}>
+            <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: '#ffffff' }}>
+              Matrix Analysis Summary
+            </h3>
+            
+            <div style={{ height: '300px', width: '100%' }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <Treemap
+                  data={treemapData}
+                  dataKey="size"
+                  aspectRatio={4 / 3}
+                  stroke="#212228"
+                  content={<CustomTreemapContent x={0} y={0} width={0} height={0} name="" value={0} fill="" />}
+                />
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+
+        {/* Metrics Row */}
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(4, 1fr)',
+          gap: '20px',
+          marginBottom: '40px'
+        }}>
+          {/* Adoption Metrics */}
+          <div style={{
+            background: '#1A1B1E',
+            borderRadius: '12px',
+            padding: '20px',
+            border: '1px solid #212228'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#9ca3af', marginBottom: '16px' }}>
+              Adoption Metrics
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {adoptionMetrics.map((metric, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+                    {metric.title}
+                  </span>
+                  <span style={{ fontSize: '14px', fontWeight: '500', color: '#ffffff' }}>
+                    {metric.value}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Exchange Activity */}
+          <div style={{
+            background: '#1A1B1E',
+            borderRadius: '12px',
+            padding: '20px',
+            border: '1px solid #212228'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#9ca3af', marginBottom: '4px' }}>
+              Exchange Activity
+            </h3>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '16px' }}>
+              Last 24h new listings
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {exchangeActivity.map((exchange, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: '#ffffff' }}>
+                      {exchange.name}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                      {exchange.count} new
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Fastest Growing */}
+          <div style={{
+            background: '#1A1B1E',
+            borderRadius: '12px',
+            padding: '20px',
+            border: '1px solid #212228'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#9ca3af', marginBottom: '4px' }}>
+              Fastest Growing
+            </h3>
+            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '16px' }}>
+              Last 24h
+            </p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {fastestGrowing.map((item, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <span style={{ fontSize: '14px', fontWeight: '500', color: '#ffffff' }}>
+                    {item.symbol}
+                  </span>
+                  <span style={{ fontSize: '12px', color: '#10b981' }}>
+                    {item.exchanges}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Newest Listings */}
+          <div style={{
+            background: '#1A1B1E',
+            borderRadius: '12px',
+            padding: '20px',
+            border: '1px solid #212228'
+          }}>
+            <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#9ca3af', marginBottom: '16px' }}>
+              Newest Listings
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              {newestListings.map((listing, index) => (
+                <div key={index} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <span style={{ fontSize: '14px', fontWeight: '500', color: '#ffffff' }}>
+                      {listing.symbol}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                      {listing.exchange}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                    {listing.time}
                   </span>
                 </div>
               ))}
@@ -346,137 +806,372 @@ export default function ListingsFeed() {
           </div>
         </div>
 
-        {/* 24h Activity Chart */}
-        <ChartWrapper
-          title="24-Hour Activity"
-          subtitle="Listings by hour"
-          height="h-64"
-        >
-          <div className="flex items-end justify-center h-full space-x-1 p-4">
-            {hourlyData.slice(-12).map((hour) => (
-              <div key={hour.hour} className="flex flex-col items-center">
-                <div
-                  className="bg-[var(--dashboard-blue)] rounded-t w-4 min-h-2"
-                  style={{
-                    height: `${Math.max(8, (hour.count / Math.max(1, Math.max(...hourlyData.map(h => h.count)))) * 150)}px`
-                  }}
-                />
-                <span className="text-xs text-[var(--dashboard-text-secondary)] mt-1">
-                  {hour.hour}
+        {/* Live Listings Feed */}
+        <div style={{
+          background: '#1A1B1E',
+          borderRadius: '12px',
+          padding: '24px',
+          border: '1px solid #212228'
+        }}>
+          <div style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: '24px'
+          }}>
+            <div>
+              <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
+                Live Listings Feed
+              </h2>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                marginTop: '8px'
+              }}>
+                <div style={{
+                  width: '8px',
+                  height: '8px',
+                  borderRadius: '50%',
+                  background: liveUpdates ? '#10b981' : '#6b7280'
+                }}></div>
+                <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                  {liveUpdates ? 'Live updates active' : 'Updates paused'}
                 </span>
               </div>
-            ))}
+            </div>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                style={{
+                  padding: '8px 16px',
+                  background: '#3b82f6',
+                  border: 'none',
+                  borderRadius: '8px',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'background 0.3s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
+              >
+                Search
+              </button>
+              <button
+                style={{
+                  padding: '8px 16px',
+                  background: '#13141a',
+                  border: '1px solid #2a2b35',
+                  borderRadius: '8px',
+                  color: '#9ca3af',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = '#1a1b23';
+                  e.currentTarget.style.color = '#ffffff';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = '#13141a';
+                  e.currentTarget.style.color = '#9ca3af';
+                }}
+              >
+                Reset all
+              </button>
+              <button
+                onClick={() => setLiveUpdates(!liveUpdates)}
+                style={{
+                  padding: '8px 16px',
+                  background: liveUpdates ? '#10b981' : '#13141a',
+                  border: `1px solid ${liveUpdates ? '#10b981' : '#2a2b35'}`,
+                  borderRadius: '8px',
+                  color: liveUpdates ? '#ffffff' : '#9ca3af',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  transition: 'all 0.3s ease'
+                }}
+              >
+                {liveUpdates ? 'Pause' : 'Resume'}
+              </button>
+            </div>
           </div>
-        </ChartWrapper>
-      </div>
 
-      {/* Listings Feed */}
-      <div className="dashboard-card">
-        <div className="dashboard-card-header">
-          <div className="flex items-center">
-            <h3 className="dashboard-card-title">Live Listings Feed</h3>
-            {isRealTime && (
-              <div className="ml-3 flex items-center">
-                <div className="w-2 h-2 bg-[var(--dashboard-green)] rounded-full animate-pulse mr-2" />
-                <span className="text-[var(--dashboard-green)] text-sm">Live</span>
-              </div>
-            )}
-          </div>
-          <div className="flex items-center space-x-2">
-            <button className="dashboard-btn dashboard-btn-secondary dashboard-btn-sm">
-              <Filter className="dashboard-icon-sm mr-1" />
-              Filter
-            </button>
-            <button className="dashboard-btn dashboard-btn-secondary dashboard-btn-sm">
-              <Download className="dashboard-icon-sm mr-1" />
-              Export
-            </button>
-          </div>
-        </div>
-        
-        {/* Filters */}
-        <div className="mb-6 space-y-4">
-          <div className="flex items-center space-x-4">
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-[var(--dashboard-text-muted)] w-4 h-4" />
+          {/* Filters */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(5, 1fr)',
+            gap: '16px',
+            marginBottom: '24px'
+          }}>
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '12px',
+                color: '#9ca3af',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                Search
+              </label>
               <input
                 type="text"
-                placeholder="Search tokens or exchanges..."
-                className="dashboard-search pl-10 pr-4 w-full"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="Search token name or symbol..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#13141a',
+                  border: '1px solid #2a2b35',
+                  borderRadius: '8px',
+                  padding: '8px 24px 8px 12px',
+                  fontSize: '14px',
+                  color: '#ffffff',
+                  outline: 'none',
+                  transition: 'border-color 0.3s ease'
+                }}
+                onFocus={(e) => e.target.style.borderColor = '#10b981'}
+                onBlur={(e) => e.target.style.borderColor = '#2a2b35'}
               />
             </div>
-          </div>
-          
-          <div className="flex flex-wrap gap-2">
-            <span className="text-[var(--dashboard-text-secondary)] text-sm self-center mr-2">Type:</span>
-            {ACTIVITY_TYPES.map((type) => (
-              <button
-                key={type}
-                className={`dashboard-filter-btn ${
-                  selectedType === type ? 'selected' : 'default'
-                }`}
-                onClick={() => setSelectedType(type)}
+            
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '12px',
+                color: '#9ca3af',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                Exchange
+              </label>
+              <select 
+                value={selectedExchange}
+                onChange={(e) => setSelectedExchange(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#13141a',
+                  border: '1px solid #2a2b35',
+                  borderRadius: '8px',
+                  padding: '8px 24px 8px 12px',
+                  fontSize: '14px',
+                  color: '#ffffff',
+                  outline: 'none'
+                }}
               >
-                {type}
-              </button>
+                <option>All Exchanges</option>
+                <option>Binance</option>
+                <option>MEXC</option>
+                <option>Gate</option>
+                <option>Bybit</option>
+              </select>
+            </div>
+            
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '12px',
+                color: '#9ca3af',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                Type
+              </label>
+              <select
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value)}
+                style={{
+                  width: '100%',
+                  background: '#13141a',
+                  border: '1px solid #2a2b35',
+                  borderRadius: '8px',
+                  padding: '8px 24px 8px 12px',
+                  fontSize: '14px',
+                  color: '#ffffff',
+                  outline: 'none'
+                }}
+              >
+                <option>All types</option>
+                <option>SPOT</option>
+                <option>FUTURES</option>
+              </select>
+            </div>
+            
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '12px',
+                color: '#9ca3af',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                Amount
+              </label>
+              <select style={{
+                width: '100%',
+                background: '#13141a',
+                border: '1px solid #2a2b35',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                fontSize: '14px',
+                color: '#ffffff',
+                outline: 'none'
+              }}>
+                <option>Amount</option>
+                <option>$0-$1</option>
+                <option>$1-$10</option>
+                <option>$10+</option>
+              </select>
+            </div>
+            
+            <div>
+              <label style={{
+                display: 'block',
+                fontSize: '12px',
+                color: '#9ca3af',
+                marginBottom: '6px',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px'
+              }}>
+                Status
+              </label>
+              <select style={{
+                width: '100%',
+                background: '#13141a',
+                border: '1px solid #2a2b35',
+                borderRadius: '8px',
+                padding: '8px 12px',
+                fontSize: '14px',
+                color: '#ffffff',
+                outline: 'none'
+              }}>
+                <option>All Status</option>
+                <option>Live</option>
+                <option>Pending</option>
+                <option>Failed</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Table Header */}
+          <div style={{
+            display: 'grid',
+            gridTemplateColumns: '1fr 1fr 1fr 2fr 1fr 1fr 1fr',
+            gap: '16px',
+            padding: '12px 16px',
+            background: '#13141a',
+            borderRadius: '8px',
+            border: '1px solid #2a2b35',
+            fontSize: '12px',
+            color: '#9ca3af',
+            textTransform: 'uppercase',
+            letterSpacing: '0.5px',
+            marginBottom: '8px'
+          }}>
+            <div>Time</div>
+            <div>Exchange</div>
+            <div>Asset</div>
+            <div>Name</div>
+            <div>Type</div>
+            <div>Price</div>
+            <div>Status</div>
+          </div>
+
+          {/* Table Rows */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1px' }}>
+            {liveListings
+              .filter(listing => 
+                (selectedExchange === 'All Exchanges' || listing.exchange === selectedExchange) &&
+                (selectedType === 'All types' || listing.type === selectedType) &&
+                (searchQuery === '' || 
+                  listing.asset.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                  listing.name.toLowerCase().includes(searchQuery.toLowerCase()))
+              )
+              .map((listing, index) => (
+              <div
+                key={`${listing.timestamp}-${listing.asset}-${index}`}
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: '1fr 1fr 1fr 2fr 1fr 1fr 1fr',
+                  gap: '16px',
+                  padding: '12px 16px',
+                  background: '#13141a',
+                  borderRadius: '8px',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  transition: 'background 0.3s ease'
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.background = '#1a1b23'}
+                onMouseLeave={(e) => e.currentTarget.style.background = '#13141a'}
+              >
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <input 
+                    type="checkbox" 
+                    style={{
+                      width: '16px',
+                      height: '16px',
+                      borderRadius: '4px',
+                      background: '#2a2b35',
+                      border: '1px solid #404040'
+                    }}
+                  />
+                  <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+                    {listing.timestamp}
+                  </span>
+                </div>
+                <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '500' }}>
+                  {listing.exchange}
+                </div>
+                <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600' }}>
+                  {listing.asset}
+                </div>
+                <div style={{ fontSize: '14px', color: '#9ca3af' }}>
+                  {listing.name}
+                </div>
+                <div>
+                  <span style={{
+                    padding: '4px 8px',
+                    background: '#2a2b35',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    color: '#ffffff'
+                  }}>
+                    {listing.type}
+                  </span>
+                </div>
+                <div style={{ fontSize: '14px', fontWeight: '500', color: '#ffffff' }}>
+                  {listing.price}
+                </div>
+                <div>
+                  <span style={{
+                    padding: '4px 8px',
+                    background: listing.status === 'Live' ? 'rgba(16, 185, 129, 0.2)' : 
+                               listing.status === 'Pending' ? 'rgba(59, 130, 246, 0.2)' :
+                               'rgba(239, 68, 68, 0.2)',
+                    color: listing.status === 'Live' ? '#10b981' :
+                           listing.status === 'Pending' ? '#3b82f6' : '#ef4444',
+                    borderRadius: '4px',
+                    fontSize: '12px',
+                    fontWeight: '500'
+                  }}>
+                    {listing.status}
+                  </span>
+                </div>
+              </div>
             ))}
           </div>
         </div>
-        
-        <DataTable
-          data={filteredActivities}
-          columns={columns}
-          emptyMessage="No listing activity matches your criteria"
-        />
       </div>
-
-      {/* Success Tracking */}
-      <div className="dashboard-card">
-        <div className="dashboard-card-header">
-          <div>
-            <h3 className="dashboard-card-title">Post-Listing Performance</h3>
-            <p className="dashboard-card-subtitle">Price impact and volume changes after listings</p>
-          </div>
-        </div>
-        
-        <div className="dashboard-grid-3">
-          {filteredActivities.slice(0, 6).filter(a => a.priceImpact).map((activity) => (
-            <div key={activity.activity.id} className="dashboard-card border-l-4 border-l-[var(--dashboard-blue)]">
-              <div className="flex items-start justify-between mb-2">
-                <div>
-                  <div className="text-lg font-semibold text-[var(--dashboard-text-primary)]">
-                    {activity.activity.token.symbol}
-                  </div>
-                  <div className="text-[var(--dashboard-text-secondary)] text-sm">
-                    {activity.activity.exchange} • {activity.timeAgo}
-                  </div>
-                </div>
-                <span className={`font-semibold ${
-                  activity.priceImpact! > 0 ? 'text-[var(--dashboard-green)]' : 'text-[var(--dashboard-red)]'
-                }`}>
-                  {activity.priceImpact! > 0 ? '+' : ''}{activity.priceImpact!.toFixed(1)}%
-                </span>
-              </div>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between">
-                  <span className="text-[var(--dashboard-text-secondary)]">Volume</span>
-                  <span className="text-[var(--dashboard-text-primary)]">
-                    {formatCurrency(activity.activity.volume || 0)}
-                  </span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-[var(--dashboard-text-secondary)]">Impact Score</span>
-                  <span className="text-[var(--dashboard-text-primary)]">
-                    {Math.round(activity.impactScore)}/100
-                  </span>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    </DashboardLayout>
+    </SharedLayout>
   );
-}
+};
+
+export default RecentListingsTrackerFeed;

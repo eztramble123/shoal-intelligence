@@ -56,8 +56,8 @@ export function DataTable<T>({
   const sortedData = [...data].sort((a, b) => {
     if (!sortKey || !sortDirection) return 0;
 
-    const aValue = (a as any)[sortKey];
-    const bValue = (b as any)[sortKey];
+    const aValue = (a as Record<string, unknown>)[sortKey as string];
+    const bValue = (b as Record<string, unknown>)[sortKey as string];
 
     if (typeof aValue === 'string' && typeof bValue === 'string') {
       return sortDirection === 'asc' 
@@ -136,7 +136,7 @@ export function DataTable<T>({
                   <td key={colIndex} className={column.className || ''}>
                     {column.render 
                       ? column.render(item, index)
-                      : String((item as any)[column.key] || '')
+                      : String((item as Record<string, unknown>)[column.key as string] || '')
                     }
                   </td>
                 ))}

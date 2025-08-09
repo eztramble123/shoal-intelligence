@@ -8,7 +8,6 @@ import {
   Grid3X3, 
   TrendingUp, 
   Activity, 
-  Trophy, 
   Search,
   Settings,
   User,

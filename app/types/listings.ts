@@ -1,0 +1,137 @@
+// Raw API response structure from Blake AI listings endpoint
+export interface RawListingRecord {
+  sourceMessage: string;
+  ticker: string;
+  id: string;
+  name: string;
+  symbol: string;
+  price_usd: number | null;
+  market_cap_usd: number | null;
+  fdv_usd: number | null;
+  volume_24h_usd: number | null;
+  high_24h_usd: number | null;
+  low_24h_usd: number | null;
+  price_change_24h: number | null;
+  price_change_pct_24h: number | null;
+  circulating_supply: number | null;
+  total_supply: number | null;
+  max_supply: number | null;
+  ath_usd: number | null;
+  atl_usd: number | null;
+  ath_change_pct_usd: number | null;
+  atl_change_pct_usd: number | null;
+  ath_date_usd: string | null;
+  atl_date_usd: string | null;
+  asset_platform_id: string | null;
+  platforms: Record<string, string>;
+  all_exchanges: string;
+  coingecko_url: string | null;
+  category: string | null;
+  public_notice: string | null;
+  last_updated: string;
+  scraped_at: string;
+}
+
+// Processed listing record with additional computed fields
+export interface ProcessedListingRecord {
+  ticker: string;
+  id: string;
+  name: string;
+  symbol: string;
+  displayName: string;
+  sourceMessage: string;
+  price: number | null;
+  priceDisplay: string;
+  marketCap: number | null;
+  marketCapDisplay: string;
+  volume24h: number | null;
+  volume24hDisplay: string;
+  priceChange24h: number | null;
+  priceChangePct24h: number | null;
+  exchanges: string[];
+  exchangesCount: number;
+  exchangesDisplay: string;
+  lastUpdated: Date;
+  lastUpdatedDisplay: string;
+  scrapedAt: Date;
+  scrapedAtDisplay: string;
+  platforms: Record<string, string>;
+  momentum: 'VERY HIGH' | 'HIGH' | 'MEDIUM' | 'LOW' | 'GROWING' | 'DECLINING';
+  momentumColor: string;
+  chartData: number[];
+}
+
+// Live listing alert for real-time feed
+export interface LiveListingAlert {
+  timestamp: string;
+  exchange: string;
+  asset: string;
+  name: string;
+  type: 'SPOT' | 'FUTURES' | 'LISTING';
+  status: 'Live' | 'Pending' | 'Failed';
+  price: string;
+  successScore?: number;
+  sourceMessage: string;
+}
+
+// Treemap data for Matrix Analysis Summary
+export interface TreemapData {
+  name: string;
+  value: number;
+  size: number;
+  fill: string;
+  changeType: 'positive' | 'negative' | 'neutral';
+  chartData: number[];
+  ticker: string;
+  exchangesCount: number;
+}
+
+// Metric cards for dashboard
+export interface MetricCard {
+  title: string;
+  value: string | number;
+  subtitle?: string;
+}
+
+// Token card for adoption map
+export interface TokenCard {
+  symbol: string;
+  name: string;
+  exchanges: string[];
+  exchangeCount: number;
+  adoption24h: string;
+  momentum: 'VERY HIGH' | 'HIGH' | 'MEDIUM' | 'LOW' | 'GROWING' | 'DECLINING';
+  momentumColor: string;
+  listedOn: string;
+  lastUpdated: string;
+  priceChange: number | null;
+  volume: string;
+}
+
+// Exchange activity data
+export interface ExchangeActivity {
+  name: string;
+  count: number;
+  status: 'new' | 'active' | 'declining';
+}
+
+// Complete dashboard data structure
+export interface ListingsDashboardData {
+  processedListings: ProcessedListingRecord[];
+  treemapData: TreemapData[];
+  tokenCards: TokenCard[];
+  liveListings: LiveListingAlert[];
+  adoptionMetrics: MetricCard[];
+  exchangeActivity: ExchangeActivity[];
+  fastestGrowing: {
+    symbol: string;
+    exchanges: string;
+    status: 'up' | 'down' | 'stable';
+  }[];
+  newestListings: {
+    symbol: string;
+    exchange: string;
+    time: string;
+  }[];
+  totalRecords: number;
+}
