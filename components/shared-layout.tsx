@@ -34,7 +34,7 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
   const activePage = getCurrentPage();
 
   const navigationItems = [
-    { icon: "/dashboard.svg", label: "Dashboard", path: 'dashboard', isActive: activePage === 'dashboard' },
+    { icon: "/dash.svg", label: "Dashboard", path: 'dashboard', isActive: activePage === 'dashboard' },
     { icon: "/file.svg", label: "Listings Parity Analysis", path: 'token-matrix', isActive: activePage === 'token-matrix' },
     { icon: "/lightbulb.svg", label: "Venture Intelligence", path: 'venture-intelligence', isActive: activePage === 'venture-intelligence' },
     { icon: "/split_arrow.svg", label: "Recent Listings", path: 'listings-feed', isActive: activePage === 'listings-feed' }
