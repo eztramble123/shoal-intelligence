@@ -13,7 +13,7 @@ interface SharedLayoutProps {
 export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { data: session, status } = useSession();
+  const { data: session } = useSession();
   const [searchTerm, setSearchTerm] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
 
@@ -31,6 +31,7 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
     if (pathname === '/token-matrix') return 'token-matrix';
     if (pathname === '/venture-intelligence') return 'venture-intelligence';  
     if (pathname === '/listings-feed') return 'listings-feed';
+    if (pathname === '/pricing') return 'pricing';
     return currentPage; // fallback to prop
   };
   

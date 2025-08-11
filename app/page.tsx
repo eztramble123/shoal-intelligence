@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { SharedLayout } from '@/components/shared-layout';
 import { ParityDashboardData } from '@/app/types/parity';
 import { FundingDashboardData } from '@/app/types/funding';
@@ -9,6 +10,7 @@ import { ListingsDashboardData } from '@/app/types/listings';
 
 export default function Dashboard() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const canvasRefs = useRef<{ [key: string]: HTMLCanvasElement | null }>({});
   
   // Data state
@@ -88,6 +90,33 @@ export default function Dashboard() {
       fetchListingsData()
     ]);
   }, []);
+
+  // Check authentication and plan selection
+  useEffect(() => {
+    if (status === 'loading') return; // Still loading
+    if (!session) {
+      router.push('/login'); // Redirect to login if not authenticated
+      return;
+    }
+
+    // Check if user has selected a plan
+    const checkUserPlan = async () => {
+      try {
+        const response = await fetch('/api/user/plan');
+        const data = await response.json();
+        
+        if (!data.planType) {
+          // User hasn't selected a plan, redirect to pricing
+          router.push('/pricing');
+        }
+      } catch (error) {
+        console.error('Error checking user plan:', error);
+        // If there's an error, still allow access but log it
+      }
+    };
+
+    checkUserPlan();
+  }, [session, status, router]);
 
   const drawMiniChart = (canvasId: string, color: string, trend: 'up' | 'down' | 'neutral' = 'neutral') => {
     const canvas = canvasRefs.current[canvasId];
@@ -179,18 +208,41 @@ export default function Dashboard() {
 
 
 
+  // Show loading while checking auth
+  if (status === 'loading') {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        background: '#14151C',
+        color: '#9ca3af'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  // Don't render dashboard if not authenticated
+  if (!session) {
+    return null;
+  }
+
   return (
     <SharedLayout currentPage="dashboard">
       <div style={{ 
         padding: '30px',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
       }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
-          Main Page
-        </h1>
-        <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '30px' }}>
-          Crypto analytics dashboard
-        </p>
+        <div style={{ marginBottom: '30px' }}>
+          <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
+            Main Page
+          </h1>
+          <p style={{ fontSize: '14px', color: '#9ca3af' }}>
+            Crypto analytics dashboard
+          </p>
+        </div>
 
         <div style={{
           display: 'grid',

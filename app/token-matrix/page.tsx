@@ -1,6 +1,8 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { Check, X, Minus, TrendingUp, ChevronLeft, ChevronRight, Search } from 'lucide-react';
 import { SharedLayout } from '@/components/shared-layout';
 import { ParityDashboardData } from '@/app/types/parity';
@@ -8,6 +10,8 @@ import { filterTokens } from '@/app/lib/parity-utils';
 import { CardSkeleton, StatsGridSkeleton, TableSkeleton, Skeleton } from '@/components/skeleton';
 
 const TokenListingDashboard = () => {
+  const router = useRouter();
+  const { data: session, status } = useSession();
   const [rowsPerPage, setRowsPerPage] = useState(500);
   const [currentPage, setCurrentPage] = useState(1);
   const [parityData, setParityData] = useState<ParityDashboardData | null>(null);
@@ -18,6 +22,14 @@ const TokenListingDashboard = () => {
   const exchanges = [
     'Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'KuCoin', 'Huobi', 'Gate.io', 'MEXC'
   ];
+
+  // Check authentication
+  useEffect(() => {
+    if (status === 'loading') return;
+    if (!session) {
+      router.push('/login');
+    }
+  }, [session, status, router]);
 
   // Fetch parity data
   useEffect(() => {
@@ -94,6 +106,27 @@ const TokenListingDashboard = () => {
     setRowsPerPage(newRowsPerPage);
     setCurrentPage(1); // Reset to first page when changing rows per page
   };
+
+  // Check auth loading
+  if (status === 'loading') {
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        height: '100vh',
+        background: '#14151C',
+        color: '#9ca3af'
+      }}>
+        Loading...
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated
+  if (!session) {
+    return null;
+  }
 
   if (loading) {
     return (

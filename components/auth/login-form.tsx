@@ -13,7 +13,7 @@ export function LoginForm({
   ...props
 }: React.ComponentProps<"div">) {
   const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/' })
+    signIn('google', { callbackUrl: '/pricing' })
   }
 
   return (
