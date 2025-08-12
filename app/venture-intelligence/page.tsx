@@ -8,14 +8,14 @@ import { CardSkeleton, TableSkeleton, ChartSkeleton, Skeleton } from '@/componen
 import { formatAmount } from '@/app/lib/funding-utils';
 
 // TypeScript interfaces
-interface Investor {
-  rank: number;
-  name: string;
-  deals: number;
-  amount: string;
-  change: string;
-  changeType: 'up' | 'down';
-}
+// interface Investor {
+//   rank: number;
+//   name: string;
+//   deals: number;
+//   amount: string;
+//   change: string;
+//   changeType: 'up' | 'down';
+// }
 
 interface TrendingCategory {
   rank: number;
@@ -38,7 +38,23 @@ interface FundingRound {
 }
 
 // Custom Treemap Content Component (matching Matrix Analysis Summary style)
-const CustomTreemapContent = (props: any) => {
+interface TreemapContentProps {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  name: string;
+  value: number;
+  fill: string;
+  payload?: {
+    category?: string;
+    totalAmountDisplay?: string;
+    dealCount?: number;
+  };
+  [key: string]: unknown;
+}
+
+const CustomTreemapContent = (props: TreemapContentProps) => {
   const { x, y, width, height, name, value, fill, payload, ...rest } = props;
   
   // Debug what properties are actually available
@@ -247,20 +263,6 @@ const VentureIntelligenceDashboard = () => {
     { rank: 1, company: 'Loading...', round: 'Loading...', amount: '$0', date: '', leadInvestor: '' }
   ];
 
-  // Keep investors for backward compatibility (used elsewhere)
-  const investors: Investor[] = fundingData ? 
-    fundingData.mostActiveInvestors.slice(0, 8).map((inv, idx) => ({
-      rank: idx + 1,
-      name: inv.name,
-      deals: inv.dealCount,
-      amount: inv.totalInvestedDisplay,
-      change: '+0.0%', // TODO: Calculate from historical data
-      changeType: 'up' as const
-    })) :
-    [
-      { rank: 1, name: 'Loading...', deals: 0, amount: '$0', change: '+0.0%', changeType: 'up' },
-    ];
-
   const trendingCategories: TrendingCategory[] = fundingData ?
     fundingData.trendingCategories.slice(0, 5).map((cat, idx) => ({
       rank: idx + 1,
@@ -399,30 +401,6 @@ const VentureIntelligenceDashboard = () => {
       { name: 'Loading...', size: 100, fill: '#6b7280', deals: 0, percentage: 0, totalAmount: 0 }
     ];
 
-  // Generate market share bars from real category data
-  const marketShareBars = fundingData ? 
-    fundingData.trendingCategories.slice(0, 10).map((cat, idx) => {
-      const percentage = (idx + 1) * 10;
-      return {
-        percentage,
-        sectors: [{ 
-          name: cat.category, 
-          color: cat.color, 
-          value: cat.percentage 
-        }]
-      };
-    }) : [
-    { percentage: 10, sectors: [{ name: 'AI/ML', color: '#f97316', value: 10 }] },
-    { percentage: 20, sectors: [{ name: 'AI/ML', color: '#f97316', value: 15 }, { name: 'Gaming', color: '#8b5cf6', value: 5 }] },
-    { percentage: 30, sectors: [{ name: 'Gaming', color: '#8b5cf6', value: 25 }, { name: 'AI/ML', color: '#f97316', value: 5 }] },
-    { percentage: 40, sectors: [{ name: 'Gaming', color: '#8b5cf6', value: 35 }, { name: 'DeFi', color: '#3b82f6', value: 5 }] },
-    { percentage: 50, sectors: [{ name: 'Gaming', color: '#8b5cf6', value: 30 }, { name: 'DeFi', color: '#3b82f6', value: 20 }] },
-    { percentage: 60, sectors: [{ name: 'DeFi', color: '#3b82f6', value: 40 }, { name: 'Gaming', color: '#8b5cf6', value: 20 }] },
-    { percentage: 70, sectors: [{ name: 'DeFi', color: '#3b82f6', value: 50 }, { name: 'Infrastructure', color: '#10b981', value: 20 }] },
-    { percentage: 80, sectors: [{ name: 'DeFi', color: '#3b82f6', value: 45 }, { name: 'Infrastructure', color: '#10b981', value: 35 }] },
-    { percentage: 90, sectors: [{ name: 'Infrastructure', color: '#10b981', value: 55 }, { name: 'DeFi', color: '#3b82f6', value: 35 }] },
-    { percentage: 100, sectors: [{ name: 'Infrastructure', color: '#10b981', value: 70 }, { name: 'DeFi', color: '#3b82f6', value: 30 }] }
-  ];
 
   const ChangeIndicator = ({ value, type }: { value: string; type: 'up' | 'down' | 'neutral' }) => {
     const getColor = () => {

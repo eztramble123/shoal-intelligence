@@ -272,7 +272,7 @@ export const calculateListingTrends = async (periodDays: number): Promise<Record
 };
 
 // Generate time-period specific metrics
-export const generatePeriodMetrics = (listings: ProcessedListingRecord[], period: string): {
+export const generatePeriodMetrics = (listings: ProcessedListingRecord[]): {
   totalNewListings: number;
   avgExchangesPerListing: number;
   topNewListings: ProcessedListingRecord[];

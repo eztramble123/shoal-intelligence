@@ -3,10 +3,10 @@
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Check, X, Minus, TrendingUp, ChevronLeft, ChevronRight, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { Check, X, Minus, TrendingUp, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { SharedLayout } from '@/components/shared-layout';
-import { ParityDashboardData } from '@/app/types/parity';
-import { filterTokens, filterTokensByComparison } from '@/app/lib/parity-utils';
+import { ParityDashboardData, ProcessedParityRecord } from '@/app/types/parity';
+import { filterTokensByComparison } from '@/app/lib/parity-utils';
 import { CardSkeleton, StatsGridSkeleton, TableSkeleton, Skeleton } from '@/components/skeleton';
 
 const TokenListingDashboard = () => {
@@ -16,7 +16,7 @@ const TokenListingDashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [parityData, setParityData] = useState<ParityDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery] = useState('');
   const [primaryExchange, setPrimaryExchange] = useState<string>('Binance');
   const [compareExchanges, setCompareExchanges] = useState<string[]>([]);
   const [sortColumn, setSortColumn] = useState<string | null>('marketCap');
@@ -53,12 +53,12 @@ const TokenListingDashboard = () => {
   }, []);
 
   // Sort function for tokens
-  const sortTokens = (tokens: any[], column: string | null, direction: 'asc' | 'desc') => {
+  const sortTokens = (tokens: ProcessedParityRecord[], column: string | null, direction: 'asc' | 'desc') => {
     if (!column) return tokens;
     
     return [...tokens].sort((a, b) => {
-      let aVal: any;
-      let bVal: any;
+      let aVal: string | number;
+      let bVal: string | number;
       
       switch (column) {
         case 'name':
@@ -119,8 +119,6 @@ const TokenListingDashboard = () => {
   const baseFilteredTokens = parityData ? filterTokensByComparison(parityData.tokens, primaryExchange, compareExchanges, searchQuery) : [];
   const filteredTokens = sortTokens(baseFilteredTokens, sortColumn, sortDirection);
   
-  // Convert to legacy format for backward compatibility with coverage calculations
-  const selectedExchanges = compareExchanges.length > 0 ? compareExchanges : [];
   
   // Calculate coverage overview for filtered tokens
   const getCoverageOverviewForFiltered = () => {
@@ -198,20 +196,6 @@ const TokenListingDashboard = () => {
     setPrimaryExchange('');
     setCompareExchanges([]);
     setCurrentPage(1);
-  };
-  
-  // Legacy handler for backward compatibility (can be removed later)
-  const handleExchangeToggle = (exchange: string) => {
-    if (selectionStep === 'primary') {
-      handlePrimarySelection(exchange);
-    } else if (selectionStep === 'compare') {
-      handleCompareSelection(exchange);
-    }
-  };
-
-  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1); // Reset to first page when searching
   };
 
   const handleRowsPerPageChange = (newRowsPerPage: number) => {

@@ -25,7 +25,16 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false)
   const [saving, setSaving] = useState(false)
   const [baseExchange, setBaseExchange] = useState('binance')
-  const [userData, setUserData] = useState<any>(null)
+  interface UserProfileData {
+    id: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+    planType?: string | null;
+    baseExchange?: string;
+  }
+  
+  const [userData, setUserData] = useState<UserProfileData | null>(null)
   const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null)
 
   // Check authentication

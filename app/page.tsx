@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { SharedLayout } from '@/components/shared-layout';
-import { CardSkeleton, Skeleton } from '@/components/skeleton';
+import { Skeleton } from '@/components/skeleton';
 import { ParityDashboardData } from '@/app/types/parity';
 import { FundingDashboardData } from '@/app/types/funding';
 import { ListingsDashboardData } from '@/app/types/listings';
@@ -624,6 +624,8 @@ export default function Dashboard() {
               >
                 View Full Report →
               </span>
+                </>
+              )}
             </div>
           </div>
 
@@ -657,55 +659,74 @@ export default function Dashboard() {
                 Live listing activity feed
               </div>
               <div style={{ marginTop: '20px' }}>
-                {[
-                  { 
-                    label: 'New Listings (30D)', 
-                    value: listingsLoading ? '...' : listingsError ? '—' : (listingsData?.last30Days?.totalNewListings || 0).toString(), 
-                    isGreen: true 
-                  },
-                  { 
-                    label: 'Top Recent Listed', 
-                    value: listingsLoading ? '...' : listingsError ? '—' : (listingsData?.fastestGrowing?.[0]?.symbol || 'N/A'), 
-                    isGreen: false 
-                  }
-                ].map((stat, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 0',
-                    borderBottom: index < 1 ? '1px solid #2a2b35' : 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#1a1b23';
-                    e.currentTarget.style.paddingLeft = '10px';
-                    e.currentTarget.style.margin = '0 -10px';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.paddingLeft = '0';
-                    e.currentTarget.style.margin = '0';
-                  }}
-                  >
-                    <span style={{ fontSize: '14px', color: '#ffffff' }}>{stat.label}</span>
-                    <span style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '600',
-                      color: stat.isGreen ? '#10b981' : '#ffffff'
-                    }}>{stat.value}</span>
-                  </div>
-                ))}
+                {listingsLoading ? (
+                  Array.from({ length: 2 }).map((_, index) => (
+                    <div key={index} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '12px 0',
+                      borderBottom: index < 1 ? '1px solid #2a2b35' : 'none'
+                    }}>
+                      <Skeleton height="14px" width="120px" />
+                      <Skeleton height="14px" width="60px" />
+                    </div>
+                  ))
+                ) : (
+                  [
+                    { 
+                      label: 'New Listings (30D)', 
+                      value: listingsError ? '—' : (listingsData?.last30Days?.totalNewListings || 0).toString(), 
+                      isGreen: true 
+                    },
+                    { 
+                      label: 'Top Recent Listed', 
+                      value: listingsError ? '—' : (listingsData?.fastestGrowing?.[0]?.symbol || 'N/A'), 
+                      isGreen: false 
+                    }
+                  ].map((stat, index) => (
+                    <div key={index} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      padding: '12px 0',
+                      borderBottom: index < 1 ? '1px solid #2a2b35' : 'none',
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#1a1b23';
+                      e.currentTarget.style.paddingLeft = '10px';
+                      e.currentTarget.style.margin = '0 -10px';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.paddingLeft = '0';
+                      e.currentTarget.style.margin = '0';
+                    }}
+                    >
+                      <span style={{ fontSize: '14px', color: '#ffffff' }}>{stat.label}</span>
+                      <span style={{ 
+                        fontSize: '14px', 
+                        fontWeight: '600',
+                        color: stat.isGreen ? '#10b981' : '#ffffff'
+                      }}>{stat.value}</span>
+                    </div>
+                  ))
+                )}
               </div>
               <div style={{ marginTop: '30px' }}>
                 {listingsLoading ? (
                   Array.from({ length: 3 }, (_, index) => (
                     <div key={index} style={{
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
                       padding: '12px 0',
                       borderBottom: index < 2 ? '1px solid #2a2b35' : 'none'
                     }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>Loading...</span>
+                      <Skeleton height="14px" width="100px" />
+                      <Skeleton height="14px" width="80px" />
                     </div>
                   ))
                 ) : listingsError ? (

@@ -10,7 +10,7 @@ const RecentListingsTrackerFeed = () => {
   const [selectedExchange, setSelectedExchange] = useState('All Exchanges');
   const [selectedType, setSelectedType] = useState('All types');
   const [selectedPeriod, setSelectedPeriod] = useState<'30d' | '90d' | 'ytd'>('30d');
-  const [liveUpdates, setLiveUpdates] = useState(true);
+  const [liveUpdates] = useState(true);
   const [listingsData, setListingsData] = useState<ListingsDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -201,7 +201,7 @@ const RecentListingsTrackerFeed = () => {
     };
   };
   
-  const { tokenCards, treemapData, exchangeActivity, fastestGrowing, newestListings, liveListings } = getFilteredData();
+  const { tokenCards, treemapData, exchangeActivity, liveListings } = getFilteredData();
   
   // Generate adoption metrics from period data
   const adoptionMetrics = periodData ? [

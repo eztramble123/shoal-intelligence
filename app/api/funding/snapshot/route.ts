@@ -138,6 +138,13 @@ export async function GET() {
       take: 50
     });
     
+    interface SnapshotSummary {
+      sector: string;
+      totalAmount: number;
+      dealCount: number;
+      percentage: number;
+    }
+    
     const snapshotsByDate = recentSnapshots.reduce((acc, snapshot) => {
       const dateKey = snapshot.date.toISOString().split('T')[0];
       if (!acc[dateKey]) acc[dateKey] = [];
@@ -148,7 +155,7 @@ export async function GET() {
         percentage: snapshot.percentage
       });
       return acc;
-    }, {} as Record<string, any[]>);
+    }, {} as Record<string, SnapshotSummary[]>);
     
     return NextResponse.json({
       totalSnapshots: recentSnapshots.length,

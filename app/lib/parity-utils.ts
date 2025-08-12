@@ -132,7 +132,7 @@ export const processParityRecord = (raw: RawParityRecord, baseExchange: string =
 };
 
 // Calculate coverage overview statistics
-export const calculateCoverageOverview = (tokens: ProcessedParityRecord[], baseExchange: string = 'binance'): CoverageOverview => {
+export const calculateCoverageOverview = (tokens: ProcessedParityRecord[]): CoverageOverview => {
   const totalTokens = tokens.length;
   const tokensMissing = tokens.filter(t => t.isMissing).length;
   

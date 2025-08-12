@@ -310,7 +310,12 @@ export const calculateTrendData = async (periodDays: number = 7): Promise<Record
   } catch (error) {
     console.error('Trend calculation error:', error);
     // Return neutral trends as fallback
-    const fallbackTrends: Record<string, any> = {};
+    const fallbackTrends: Record<string, {
+      trendPercentage: number;
+      trendDirection: 'up' | 'down' | 'neutral';
+      trendDisplay: string;
+      previousAmount: number;
+    }> = {};
     const allSectors = [
       'Infrastructure', 'DeFi', 'Gaming', 'AI', 'Trading', 'Social', 
       'Privacy', 'Enterprise', 'NFTs', 'Identity', 'Security', 

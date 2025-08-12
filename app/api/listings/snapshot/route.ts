@@ -142,6 +142,14 @@ export async function GET() {
       take: 50
     });
     
+    interface ListingSnapshotSummary {
+      ticker: string;
+      name: string;
+      exchangeCount: number;
+      exchanges: string;
+      price: number;
+    }
+    
     const snapshotsByDate = recentSnapshots.reduce((acc, snapshot) => {
       const dateKey = snapshot.date.toISOString().split('T')[0];
       if (!acc[dateKey]) acc[dateKey] = [];
@@ -153,7 +161,7 @@ export async function GET() {
         price: snapshot.price
       });
       return acc;
-    }, {} as Record<string, any[]>);
+    }, {} as Record<string, ListingSnapshotSummary[]>);
     
     return NextResponse.json({
       totalSnapshots: recentSnapshots.length,
