@@ -192,6 +192,11 @@ export default function Dashboard() {
   };
 
   useEffect(() => {
+    // Only fetch data if authenticated
+    if (status === 'loading' || !session) {
+      return;
+    }
+    
     // Initial data fetch
     fetchAllData();
     
@@ -208,7 +213,7 @@ export default function Dashboard() {
       clearInterval(pollInterval);
       clearTimeout(chartTimeout);
     };
-  }, [fetchAllData]);
+  }, [fetchAllData, session, status]);
 
   const navigate = (page: string) => {
     if (page === 'dashboard') {
