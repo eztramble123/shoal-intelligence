@@ -426,9 +426,9 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
   yearStart.setHours(0, 0, 0, 0);
   const ytdListings = result.filter(listing => listing.scrapedAt >= yearStart);
   
-  const last30DaysData = generatePeriodMetrics(last30DayListings, '30 days');
-  const last90DaysData = generatePeriodMetrics(last90DayListings, '90 days');
-  const yearToDateData = generatePeriodMetrics(ytdListings, 'YTD');
+  const last30DaysData = generatePeriodMetrics(last30DayListings);
+  const last90DaysData = generatePeriodMetrics(last90DayListings);
+  const yearToDateData = generatePeriodMetrics(ytdListings);
 
   return {
     processedListings: result,

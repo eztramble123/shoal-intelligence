@@ -82,11 +82,11 @@ const TokenListingDashboard = () => {
           return 0;
       }
       
-      if (typeof aVal === 'string') {
+      if (typeof aVal === 'string' && typeof bVal === 'string') {
         return direction === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
       }
       
-      return direction === 'asc' ? aVal - bVal : bVal - aVal;
+      return direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
     });
   };
   

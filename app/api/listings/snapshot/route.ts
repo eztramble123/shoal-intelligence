@@ -146,8 +146,8 @@ export async function GET() {
       ticker: string;
       name: string;
       exchangeCount: number;
-      exchanges: string;
-      price: number;
+      exchanges: string[];
+      price: number | null;
     }
     
     const snapshotsByDate = recentSnapshots.reduce((acc, snapshot) => {

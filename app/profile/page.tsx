@@ -32,6 +32,7 @@ export default function ProfilePage() {
     image?: string | null;
     planType?: string | null;
     baseExchange?: string;
+    createdAt?: Date | string;
   }
   
   const [userData, setUserData] = useState<UserProfileData | null>(null)

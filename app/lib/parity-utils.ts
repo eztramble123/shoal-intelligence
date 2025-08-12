@@ -173,7 +173,7 @@ export const calculateCoverageOverview = (tokens: ProcessedParityRecord[]): Cove
 // Process all parity data for dashboard
 export const processParityData = (rawData: RawParityRecord[], baseExchange: string = 'binance'): ParityDashboardData => {
   const tokens = rawData.map(record => processParityRecord(record, baseExchange));
-  const coverageOverview = calculateCoverageOverview(tokens, baseExchange);
+  const coverageOverview = calculateCoverageOverview(tokens);
 
   return {
     coverageOverview,

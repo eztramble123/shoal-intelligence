@@ -46,10 +46,14 @@ interface TreemapContentProps {
   name: string;
   value: number;
   fill: string;
+  deals?: number;
   payload?: {
     category?: string;
     totalAmountDisplay?: string;
     dealCount?: number;
+    totalAmount?: number;
+    deals?: number;
+    percentage?: number;
   };
   [key: string]: unknown;
 }

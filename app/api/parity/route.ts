@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
+import { authOptions } from '@/lib/auth';
 import { processParityData } from '@/app/lib/parity-utils';
 import { RawParityRecord } from '@/app/types/parity';
 import { prisma } from '@/lib/prisma';
