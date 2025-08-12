@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react';
 import { SharedLayout } from '@/components/shared-layout';
+import { Treemap, ResponsiveContainer } from 'recharts';
 import { FundingDashboardData } from '@/app/types/funding';
 import { CardSkeleton, TableSkeleton, ChartSkeleton, Skeleton } from '@/components/skeleton';
+import { formatAmount } from '@/app/lib/funding-utils';
 
 // TypeScript interfaces
 interface Investor {
@@ -21,7 +23,7 @@ interface TrendingCategory {
   amount: string;
   deals: number;
   change: string;
-  changeType: 'up' | 'down';
+  changeType: 'up' | 'down' | 'neutral';
 }
 
 interface FundingRound {
@@ -35,12 +37,132 @@ interface FundingRound {
   changeType: 'up' | 'down';
 }
 
+// Custom Treemap Content Component (matching Matrix Analysis Summary style)
+const CustomTreemapContent = (props: any) => {
+  const { x, y, width, height, name, value, fill, payload, ...rest } = props;
+  
+  // Debug what properties are actually available
+  console.log('All treemap props:', props);
+  
+  return (
+    <g>
+      <rect
+        x={x}
+        y={y}
+        width={width}
+        height={height}
+        fill={fill}
+        stroke="#212228"
+        strokeWidth={1}
+        style={{
+          cursor: 'pointer'
+        }}
+      />
+      {width > 40 && height > 30 && (
+        <>
+          {/* Sector name - centered and responsive */}
+          <text
+            x={x + width / 2}
+            y={y + height / 2 - (height > 80 ? 18 : height > 60 ? 12 : 8)}
+            textAnchor="middle"
+            fill="white"
+            stroke="none"
+            fontSize={Math.min(width / 8, height / 12, 11)}
+            fontWeight="600"
+            style={{ fill: 'white' }}
+          >
+            {width > 80 ? name : name.length > 8 ? name.substring(0, 6) + '...' : name}
+          </text>
+          
+          {/* Total funding amount - centered */}
+          <text
+            x={x + width / 2}
+            y={y + height / 2}
+            textAnchor="middle"
+            fill="white"
+            stroke="none"
+            fontSize={Math.min(width / 6, height / 8, 14)}
+            fontWeight="700"
+            style={{ fill: 'white' }}
+          >
+            {payload?.totalAmount !== undefined 
+              ? payload.totalAmount > 0 
+                ? `$${(payload.totalAmount / 1e6).toFixed(0)}M` 
+                : '$0M'
+              : value > 0 
+                ? `$${(value / 1e6).toFixed(0)}M` 
+                : '$0M'
+            }
+          </text>
+          
+          {/* Deal count - centered below amount */}
+          <text
+            x={x + width / 2}
+            y={y + height / 2 + (height > 80 ? 18 : height > 60 ? 12 : 8)}
+            textAnchor="middle"
+            fill="white"
+            stroke="none"
+            fontSize={Math.min(width / 10, height / 14, 9)}
+            fontWeight="400"
+            style={{ fill: 'white', opacity: 0.85 }}
+          >
+            {(() => {
+              // Try to get deal count from various possible sources
+              const dealCount = props?.deals || payload?.deals || payload?.dealCount || rest?.deals || 0;
+              return `${dealCount} deals`;
+            })()}
+          </text>
+          
+          {/* Status indicator circle - top left */}
+          <circle
+            cx={x + (width > 60 ? 8 : 4)}
+            cy={y + (height > 60 ? 8 : 4)}
+            r={Math.min(width / 20, height / 20, 3)}
+            fill="white"
+            opacity={0.8}
+          />
+          
+          {/* Percentage indicator in bottom right - only for larger boxes */}
+          {width > 70 && height > 70 && payload?.percentage !== undefined && (
+            <text
+              x={x + width - 8}
+              y={y + height - 8}
+              textAnchor="end"
+              fill="white"
+              stroke="none"
+              fontSize={Math.min(width / 12, height / 12, 10)}
+              fontWeight="600"
+              style={{ fill: 'white', opacity: 0.9 }}
+            >
+              {payload.percentage.toFixed(1)}%
+            </text>
+          )}
+        </>
+      )}
+    </g>
+  );
+};
+
+
+// Helper function to format investor display
+const formatInvestorDisplay = (leadInvestors: string[], otherInvestors: string[]): string => {
+  const allInvestors = [...leadInvestors, ...otherInvestors];
+  
+  if (allInvestors.length === 0) return 'N/A';
+  if (allInvestors.length === 1) return allInvestors[0];
+  if (allInvestors.length === 2) return `${allInvestors[0]}, ${allInvestors[1]}`;
+  if (allInvestors.length === 3) return `${allInvestors[0]}, ${allInvestors[1]}, ${allInvestors[2]}`;
+  
+  // More than 3 investors
+  const displayCount = 2;
+  const displayInvestors = allInvestors.slice(0, displayCount);
+  const remainingCount = allInvestors.length - displayCount;
+  
+  return `${displayInvestors.join(', ')} + ${remainingCount} others`;
+};
 
 const VentureIntelligenceDashboard = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCompany, setSelectedCompany] = useState('All Companies');
   const [selectedRound, setSelectedRound] = useState('All Rounds');
-  const [selectedInvestor, setSelectedInvestor] = useState('All Investors');
   const [selectedAmount, setSelectedAmount] = useState('All Amounts');
   const [rowsPerPage, setRowsPerPage] = useState(50);
   const [currentPage, setCurrentPage] = useState(1);
@@ -73,7 +195,59 @@ const VentureIntelligenceDashboard = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Use real data or fallback to mock
+  // Get recent 90-day funding rounds
+  const recent90DayRounds = fundingData ? (() => {
+    console.log('=== DEBUGGING FUNDING DATA ===');
+    console.log('fundingData exists:', !!fundingData);
+    console.log('fundingData.latestRounds exists:', !!fundingData.latestRounds);
+    console.log('fundingData.latestRounds length:', fundingData.latestRounds?.length || 0);
+    
+    if (fundingData.latestRounds && fundingData.latestRounds.length > 0) {
+      console.log('First 3 rounds:', fundingData.latestRounds.slice(0, 3).map(r => ({
+        name: r.name,
+        date: r.date,
+        dateDisplay: r.dateDisplay,
+        dateType: typeof r.date,
+        isValidDate: r.date instanceof Date && !isNaN(r.date.getTime())
+      })));
+    }
+
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    console.log('90 days ago:', ninetyDaysAgo);
+    console.log('Today:', new Date());
+
+    const filteredRounds = fundingData.latestRounds
+      .filter(round => {
+        // Convert string date to Date object for proper comparison
+        const roundDate = new Date(round.date);
+        const isWithin90Days = roundDate >= ninetyDaysAgo;
+        console.log(`Round "${round.name}": date=${round.date}, roundDate=${roundDate}, within90Days=${isWithin90Days}`);
+        return isWithin90Days;
+      });
+    
+    console.log('Filtered rounds count (within 90 days):', filteredRounds.length);
+    
+    const mappedRounds = filteredRounds
+      .slice(0, 8)
+      .map((round, idx) => ({
+        rank: idx + 1,
+        company: round.name,
+        round: round.round,
+        amount: round.amountDisplay,
+        date: round.dateDisplay,
+        leadInvestor: formatInvestorDisplay(round.leadInvestors, round.otherInvestors)
+      }));
+    
+    console.log('Final mapped rounds:', mappedRounds);
+    console.log('=== END DEBUG ===');
+    
+    return mappedRounds;
+  })() : [
+    { rank: 1, company: 'Loading...', round: 'Loading...', amount: '$0', date: '', leadInvestor: '' }
+  ];
+
+  // Keep investors for backward compatibility (used elsewhere)
   const investors: Investor[] = fundingData ? 
     fundingData.mostActiveInvestors.slice(0, 8).map((inv, idx) => ({
       rank: idx + 1,
@@ -93,8 +267,8 @@ const VentureIntelligenceDashboard = () => {
       name: cat.category,
       amount: cat.totalAmountDisplay,
       deals: cat.dealCount,
-      change: `${cat.percentage > 25 ? '+' : '-'}${Math.abs(25 - cat.percentage).toFixed(1)}%`,
-      changeType: cat.percentage > 25 ? 'up' : 'down' as const
+      change: cat.trendDisplay || '0.0%',
+      changeType: cat.trendDirection || 'neutral' as const
     })) :
     [
       { rank: 1, name: 'Loading...', amount: '$0', deals: 0, change: '+0.0%', changeType: 'up' },
@@ -106,7 +280,7 @@ const VentureIntelligenceDashboard = () => {
       company: round.name,
       round: round.round || 'Unknown',
       amount: round.amountDisplay,
-      leadInvestor: round.leadInvestors[0] || 'Various',
+      leadInvestor: formatInvestorDisplay(round.leadInvestors, round.otherInvestors),
       valuation: round.valuation || 'N/A',
       change: '+0.0%', // TODO: Calculate from historical data
       changeType: 'up' as const
@@ -116,28 +290,14 @@ const VentureIntelligenceDashboard = () => {
     ];
 
   // Get unique values for dropdowns
-  const uniqueCompanies = ['All Companies', ...new Set(allFundingRounds.map(round => round.company).filter(Boolean))];
   const uniqueRounds = ['All Rounds', ...new Set(allFundingRounds.map(round => round.round).filter(Boolean))];
-  const uniqueInvestors = ['All Investors', ...new Set(allFundingRounds.map(round => round.leadInvestor).filter(Boolean))];
   const amountRanges = ['All Amounts', '$0-1M', '$1-5M', '$5-10M', '$10-50M', '$50M+'];
 
-  // Filter and sort funding rounds based on search and filters
+  // Filter and sort funding rounds based on filters
   const filteredAndSortedFundingRounds = allFundingRounds
     .filter(round => {
-      // Search filter
-      const searchMatch = searchQuery === '' || 
-        round.company.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        round.round.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        round.leadInvestor.toLowerCase().includes(searchQuery.toLowerCase());
-
-      // Company filter
-      const companyMatch = selectedCompany === 'All Companies' || round.company === selectedCompany;
-
       // Round filter
       const roundMatch = selectedRound === 'All Rounds' || round.round === selectedRound;
-
-      // Investor filter
-      const investorMatch = selectedInvestor === 'All Investors' || round.leadInvestor === selectedInvestor;
 
       // Amount filter
       const amountMatch = selectedAmount === 'All Amounts' || (() => {
@@ -163,18 +323,10 @@ const VentureIntelligenceDashboard = () => {
         }
       })();
 
-      return searchMatch && companyMatch && roundMatch && investorMatch && amountMatch;
+      return roundMatch && amountMatch;
     })
     .sort((a, b) => {
-      // If there's a search query, sort by company name first, then by time
-      if (searchQuery && searchQuery.trim() !== '') {
-        const companyCompare = a.company.localeCompare(b.company);
-        if (companyCompare !== 0) return companyCompare;
-        // If company names are the same, sort by time (most recent first)
-        return new Date(b.time).getTime() - new Date(a.time).getTime();
-      }
-      
-      // If no search, sort by time only (most recent first)
+      // Sort by time only (most recent first)
       return new Date(b.time).getTime() - new Date(a.time).getTime();
     });
 
@@ -188,22 +340,64 @@ const VentureIntelligenceDashboard = () => {
   // Reset to page 1 when filters change or rows per page changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedCompany, selectedRound, selectedInvestor, selectedAmount, rowsPerPage]);
+  }, [selectedRound, selectedAmount, rowsPerPage]);
 
   // Reset all filters
   const resetAllFilters = () => {
-    setSearchQuery('');
-    setSelectedCompany('All Companies');
     setSelectedRound('All Rounds');
-    setSelectedInvestor('All Investors');
     setSelectedAmount('All Amounts');
     setCurrentPage(1);
   };
 
-  // Extended funding timeline data
-  const fundingTimelineData = fundingData ?
-    fundingData.monthlyFunding.map(m => m.total * 100).slice(0, 20) :
-    [100, 150, 200, 170, 240, 300, 280, 200, 230, 280, 250, 180, 150, 120, 195, 240, 245, 215, 170, 125];
+  // Extended funding timeline data - 90 days with weekly data points (13 weeks)
+  const fundingTimelineData = fundingData ? (() => {
+    const now = new Date();
+    const weeklyData = [];
+    
+    // Generate 13 weekly data points for 90 days
+    for (let i = 12; i >= 0; i--) {
+      const weekStart = new Date(now);
+      weekStart.setDate(weekStart.getDate() - (i * 7 + 7));
+      const weekEnd = new Date(now);
+      weekEnd.setDate(weekEnd.getDate() - (i * 7));
+      
+      // Filter rounds for this week
+      const weeklyRounds = fundingData.latestRounds.filter(round => {
+        const roundDate = new Date(round.date);
+        return roundDate >= weekStart && roundDate <= weekEnd;
+      });
+      
+      // Sum funding for this week
+      const weeklyTotal = weeklyRounds.reduce((sum, round) => sum + round.amount, 0);
+      // Convert to appropriate scale for chart display (in millions)
+      weeklyData.push(weeklyTotal / 1e6);
+    }
+    
+    return weeklyData;
+  })() : [100, 150, 200, 170, 240, 300, 280, 200, 230, 280, 250, 180, 150];
+
+  // Prepare treemap data from last90DaysCategories - show all 15 sectors (90-day filtered)
+  const treemapData = fundingData ? 
+    (() => {
+      console.log('=== PREPARING 90-DAY TREEMAP DATA ===');
+      console.log('fundingData.last90DaysCategories:', fundingData.last90DaysCategories);
+      console.log('Total 90-day categories available:', fundingData.last90DaysCategories.length);
+      
+      const data = fundingData.last90DaysCategories.map((cat) => ({
+        name: cat.category,
+        size: cat.totalAmount > 0 ? Math.max(cat.totalAmount, 1000000) : 1000000, // Minimum size for visibility, but preserve real amount
+        fill: cat.color || '#6b7280',
+        deals: cat.dealCount,
+        percentage: cat.percentage,
+        totalAmount: cat.totalAmount // Keep the real amount for display
+      }));
+      
+      console.log('90-day treemap data prepared:', data.map(d => `${d.name}: $${(d.totalAmount / 1e6).toFixed(0)}M (${d.deals} deals)`));
+      return data;
+    })() :
+    [
+      { name: 'Loading...', size: 100, fill: '#6b7280', deals: 0, percentage: 0, totalAmount: 0 }
+    ];
 
   // Generate market share bars from real category data
   const marketShareBars = fundingData ? 
@@ -230,11 +424,22 @@ const VentureIntelligenceDashboard = () => {
     { percentage: 100, sectors: [{ name: 'Infrastructure', color: '#10b981', value: 70 }, { name: 'DeFi', color: '#3b82f6', value: 30 }] }
   ];
 
-  const ChangeIndicator = ({ value, type }: { value: string; type: 'up' | 'down' }) => {
-    const isPositive = type === 'up';
+  const ChangeIndicator = ({ value, type }: { value: string; type: 'up' | 'down' | 'neutral' }) => {
+    const getColor = () => {
+      if (type === 'up') return '#10b981';
+      if (type === 'down') return '#ef4444';
+      return '#9ca3af'; // neutral color
+    };
+    
+    const getIcon = () => {
+      if (type === 'up') return '↗';
+      if (type === 'down') return '↘';
+      return '→'; // neutral arrow
+    };
+    
     return (
       <span style={{ 
-        color: isPositive ? '#10b981' : '#ef4444',
+        color: getColor(),
         fontSize: '12px',
         display: 'flex',
         alignItems: 'center',
@@ -242,7 +447,7 @@ const VentureIntelligenceDashboard = () => {
       }}>
         {value}
         <span style={{ fontSize: '10px' }}>
-          {isPositive ? '↗' : '↘'}
+          {getIcon()}
         </span>
       </span>
     );
@@ -267,14 +472,14 @@ const VentureIntelligenceDashboard = () => {
         {/* Loading State with Skeletons */}
         {isLoading && (
           <>
-            {/* Three Column Grid Layout Skeleton */}
+            {/* Two Column Grid Layout Skeleton */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '1fr 1fr 1fr',
-              gap: '30px',
+              gridTemplateColumns: '1fr 1fr',
+              gap: '40px',
               marginBottom: '40px'
             }}>
-              {/* Left Column - Investor Metrics */}
+              {/* Left Column - 90 day Raise announcements */}
               <div>
                 <Skeleton height="18px" width="120px" style={{ marginBottom: '20px' }} />
                 <CardSkeleton>
@@ -311,45 +516,6 @@ const VentureIntelligenceDashboard = () => {
                 </CardSkeleton>
               </div>
 
-              {/* Middle Column - Hot Sectors */}
-              <div>
-                <Skeleton height="18px" width="180px" style={{ marginBottom: '20px' }} />
-                <CardSkeleton>
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    height: '200px',
-                    gap: '4px'
-                  }}>
-                    {Array.from({ length: 10 }).map((_, i) => (
-                      <Skeleton 
-                        key={i}
-                        width="100%" 
-                        height={`${Math.random() * 60 + 20}%`}
-                        borderRadius="2px"
-                      />
-                    ))}
-                  </div>
-                  
-                  <Skeleton height="12px" width="200px" style={{ marginTop: '20px', marginBottom: '16px', marginLeft: 'auto', marginRight: 'auto' }} />
-                  
-                  {/* Legend */}
-                  <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '16px'
-                  }}>
-                    {Array.from({ length: 4 }).map((_, i) => (
-                      <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                        <Skeleton width="8px" height="8px" borderRadius="2px" />
-                        <Skeleton height="10px" width="60px" />
-                      </div>
-                    ))}
-                  </div>
-                </CardSkeleton>
-              </div>
 
               {/* Right Column - Trending Categories */}
               <div>
@@ -459,17 +625,17 @@ const VentureIntelligenceDashboard = () => {
         <>
         <div style={{
           display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          gap: '30px',
+          gridTemplateColumns: '1fr 1fr',
+          gap: '40px',
           marginBottom: '40px'
         }}>
-          {/* Left Column - Investor Metrics */}
+          {/* Left Column - 90 day Raise announcements */}
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: '#ffffff' }}>
-              Investor metrics
+              Raise Announcements (90-day)
             </h2>
             
-            {/* Most Active Investors */}
+            {/* Recent Funding Rounds */}
             <div style={{
               background: '#1A1B1E',
               borderRadius: '12px',
@@ -491,16 +657,16 @@ const VentureIntelligenceDashboard = () => {
                   letterSpacing: '0.5px',
                   margin: 0
                 }}>
-                  Most Active Investors
+                  Recent Funding Rounds
                 </h3>
                 <span style={{ fontSize: '10px', color: '#6b7280' }}>
-                  300 SUM (CHANGE)
+                  Last 90 days
                 </span>
               </div>
               
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {investors.map((investor) => (
-                  <div key={investor.rank} style={{
+                {recent90DayRounds.length > 0 ? recent90DayRounds.map((round) => (
+                  <div key={round.rank} style={{
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'space-between',
@@ -512,167 +678,40 @@ const VentureIntelligenceDashboard = () => {
                   onMouseEnter={(e) => e.currentTarget.style.background = '#13141a'}
                   onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1 }}>
                       <span style={{ fontSize: '12px', color: '#9ca3af', width: '16px' }}>
-                        {investor.rank}
+                        {round.rank}
                       </span>
-                      <span style={{ fontSize: '14px', color: '#ffffff' }}>
-                        {investor.name}
-                      </span>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                        <span style={{ fontSize: '14px', color: '#ffffff' }}>
+                          {round.company}
+                        </span>
+                        <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                          {round.round} • {round.date}
+                        </span>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-                      <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-                        {investor.deals} deals
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#10b981' }}>
+                        {round.amount}
                       </span>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                        {investor.amount}
-                      </span>
-                      <ChangeIndicator value={investor.change} type={investor.changeType} />
                     </div>
                   </div>
-                ))}
+                )) : (
+                  <div style={{ padding: '12px 0', textAlign: 'center' }}>
+                    <span style={{ fontSize: '14px', color: '#9ca3af' }}>No recent announcements</span>
+                  </div>
+                )}
               </div>
             </div>
 
           </div>
 
-          {/* Middle Column - Hot Sectors */}
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: '#ffffff' }}>
-              Hot sectors - market share
-            </h2>
-            
-            <div style={{
-              background: '#1A1B1E',
-              borderRadius: '12px',
-              padding: '24px',
-              border: '1px solid #212228'
-            }}>
-              <div style={{ marginBottom: '20px' }}>
-                {/* 10 Horizontal bars */}
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {marketShareBars.map((bar, index) => (
-                    <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <div style={{
-                        fontSize: '10px',
-                        color: '#9ca3af',
-                        width: '30px',
-                        textAlign: 'right'
-                      }}>
-                        {bar.percentage}%
-                      </div>
-                      <div style={{
-                        position: 'relative',
-                        height: '16px',
-                        background: '#13141a',
-                        borderRadius: '4px',
-                        overflow: 'hidden',
-                        flex: 1,
-                        cursor: 'pointer',
-                        transition: 'opacity 0.3s ease'
-                      }}
-                      onMouseEnter={(e) => e.currentTarget.style.opacity = '0.8'}
-                      onMouseLeave={(e) => e.currentTarget.style.opacity = '1'}
-                      title={`${bar.percentage}% - ${bar.sectors.map(s => s.name).join(', ')}`}
-                      >
-                        <div style={{
-                          position: 'absolute',
-                          left: 0,
-                          top: 0,
-                          height: '100%',
-                          width: `${bar.percentage}%`,
-                          display: 'flex',
-                          transition: 'width 0.5s ease'
-                        }}>
-                          {bar.sectors.map((sector, sectorIndex) => (
-                            <div
-                              key={sectorIndex}
-                              style={{
-                                background: sector.color,
-                                height: '100%',
-                                flex: sector.value,
-                                borderRight: sectorIndex < bar.sectors.length - 1 ? '1px solid rgba(255,255,255,0.1)' : 'none'
-                              }}
-                            />
-                          ))}
-                        </div>
-                        
-                        {/* Percentage value on the bar */}
-                        <div style={{
-                          position: 'absolute',
-                          right: '6px',
-                          top: '50%',
-                          transform: 'translateY(-50%)',
-                          fontSize: '8px',
-                          color: '#ffffff',
-                          fontWeight: '600'
-                        }}>
-                          {bar.percentage}%
-                        </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              
-              {/* X-axis - 4 weeks timeline */}
-              <div style={{
-                display: 'flex',
-                justifyContent: 'space-between',
-                fontSize: '10px',
-                color: '#6b7280',
-                marginTop: '16px',
-                paddingLeft: '42px'
-              }}>
-                <span>Week 1</span>
-                <span>Week 2</span>
-                <span>Week 3</span>
-                <span>Week 4</span>
-              </div>
-              
-              {/* Chart title and legend */}
-              <div style={{
-                textAlign: 'center',
-                fontSize: '12px',
-                color: '#9ca3af',
-                marginTop: '20px',
-                marginBottom: '16px'
-              }}>
-                Market Share Distribution - 10 Bars (10% Each)
-              </div>
-              
-              {/* Key sectors legend */}
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '16px',
-                fontSize: '10px'
-              }}>
-                {[
-                  { name: 'Infrastructure', color: '#10b981' },
-                  { name: 'DeFi', color: '#3b82f6' },
-                  { name: 'Gaming', color: '#8b5cf6' },
-                  { name: 'AI/ML', color: '#f97316' }
-                ].map((sector, index) => (
-                  <div key={index} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                    <div style={{
-                      width: '8px',
-                      height: '8px',
-                      background: sector.color,
-                      borderRadius: '2px'
-                    }} />
-                    <span style={{ color: '#9ca3af' }}>{sector.name}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
 
           {/* Right Column - Trending Categories */}
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: '#ffffff' }}>
-              Trending Categories
+              Trending Categories (7-day)
             </h2>
             
             {/* Combined Trending Categories Card */}
@@ -698,29 +737,43 @@ const VentureIntelligenceDashboard = () => {
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Total Capital Deployed:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>$2.8B</span>
-                    <span style={{ fontSize: '12px', color: '#10b981' }}>+2.1% ↗</span>
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
+                      {fundingData?.totalRaised || '$0'}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Total Deals:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>187</span>
-                    <span style={{ fontSize: '12px', color: '#10b981' }}>+4% ↗</span>
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
+                      {fundingData?.activeDeals || 0}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Avg Round Size:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>$15M</span>
-                    <span style={{ fontSize: '12px', color: '#10b981' }}>+2.1% ↗</span>
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
+                      {fundingData?.avgRoundSize || '$0'}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span style={{ fontSize: '14px', color: '#ffffff' }}>New Funds Raised:</span>
+                  <span style={{ fontSize: '14px', color: '#ffffff' }}>90-Day Total Raised:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>$8.5B</span>
-                    <span style={{ fontSize: '12px', color: '#ef4444' }}>-0.8% ↘</span>
+                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
+                      {fundingData ? (() => {
+                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                        return total90Day >= 1e9 ? `$${(total90Day / 1e9).toFixed(1)}B` :
+                               total90Day >= 1e6 ? `$${(total90Day / 1e6).toFixed(0)}M` :
+                               total90Day >= 1e3 ? `$${(total90Day / 1e3).toFixed(0)}K` :
+                               `$${total90Day.toFixed(0)}`;
+                      })() : '$0'}
+                    </span>
+                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
                 </div>
               </div>
@@ -778,6 +831,82 @@ const VentureIntelligenceDashboard = () => {
           </div>
         </div>
 
+        {/* Full Width Funding By Sector Treemap */}
+        <div style={{
+          background: '#1A1B1E',
+          borderRadius: '12px',
+          padding: '30px',
+          border: '1px solid #212228',
+          marginBottom: '40px'
+        }}>
+          <h2 style={{
+            fontSize: '20px',
+            fontWeight: '600',
+            marginBottom: '25px',
+            color: '#ffffff'
+          }}>
+            Funding By Sector (Last 90 Days)
+          </h2>
+          
+          <div style={{ height: '500px', width: '100%' }}>
+            <ResponsiveContainer width="100%" height="100%">
+              <Treemap
+                data={treemapData}
+                dataKey="size"
+                aspectRatio={16 / 9}
+                stroke="#212228"
+                content={<CustomTreemapContent x={0} y={0} width={0} height={0} name="" value={0} fill="" />}
+              />
+            </ResponsiveContainer>
+          </div>
+          
+          {/* Summary stats below treemap */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '50px',
+            fontSize: '14px',
+            color: '#9ca3af',
+            paddingTop: '25px',
+            borderTop: '1px solid #2a2b35',
+            marginTop: '25px'
+          }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
+                {fundingData ? (() => {
+                  const total90Days = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                  return formatAmount(total90Days);
+                })() : '$0'}
+              </div>
+              <div style={{ fontSize: '12px' }}>90-Day Total</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
+                {fundingData ? fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0) : 0}
+              </div>
+              <div style={{ fontSize: '12px' }}>Total Deals</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: '#10b981', fontWeight: '600', fontSize: '18px' }}>
+                {fundingData ? fundingData.last90DaysCategories.filter(cat => cat.totalAmount > 0).length : 0}
+              </div>
+              <div style={{ fontSize: '12px' }}>Active Sectors</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
+                {fundingData ? (() => {
+                  const totalDeals = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0);
+                  const total90Days = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                  const avgDeal = totalDeals > 0 ? total90Days / totalDeals : 0;
+                  return formatAmount(avgDeal);
+                })() : '$0'}
+              </div>
+              <div style={{ fontSize: '12px' }}>Avg Deal Size</div>
+            </div>
+          </div>
+        </div>
+
         {/* Full Width Funding Timeline */}
         <div style={{
           background: '#1A1B1E',
@@ -792,7 +921,7 @@ const VentureIntelligenceDashboard = () => {
             marginBottom: '20px',
             color: '#ffffff'
           }}>
-            Funding Timeline (30D)
+            Funding Timeline (90D)
           </h2>
           
           <div style={{ position: 'relative', height: '250px', marginBottom: '20px' }}>
@@ -807,28 +936,44 @@ const VentureIntelligenceDashboard = () => {
               height: '200px',
               gap: '2px'
             }}>
-              {fundingTimelineData.map((value, index) => (
-                <div
-                  key={index}
-                  style={{
-                    background: 'rgba(196, 181, 253, 0.8)',
-                    borderRadius: '2px 2px 0 0',
-                    height: `${(value / 300) * 100}%`,
-                    flex: 1,
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#c4b5fd';
-                    e.currentTarget.style.transform = 'scaleY(1.1) scaleX(1.5)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(196, 181, 253, 0.8)';
-                    e.currentTarget.style.transform = 'scaleY(1) scaleX(1)';
-                  }}
-                  title={`Data Point ${index + 1}: $${value}M`}
-                />
-              ))}
+              {fundingTimelineData.map((value, index) => {
+                // Calculate dynamic scaling with uniform intervals
+                const maxValue = Math.max(...fundingTimelineData, 50);
+                
+                // Use same interval logic as y-axis
+                let interval;
+                if (maxValue <= 100) interval = 20;
+                else if (maxValue <= 200) interval = 50;
+                else if (maxValue <= 500) interval = 100;
+                else if (maxValue <= 1000) interval = 200;
+                else if (maxValue <= 2000) interval = 500;
+                else interval = 1000;
+                
+                const roundedMax = Math.ceil(maxValue / interval) * interval;
+                
+                return (
+                  <div
+                    key={index}
+                    style={{
+                      background: 'rgba(196, 181, 253, 0.8)',
+                      borderRadius: '2px 2px 0 0',
+                      height: `${(value / roundedMax) * 100}%`,
+                      flex: 1,
+                      cursor: 'pointer',
+                      transition: 'all 0.3s ease'
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = '#c4b5fd';
+                      e.currentTarget.style.transform = 'scaleY(1.1) scaleX(1.5)';
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = 'rgba(196, 181, 253, 0.8)';
+                      e.currentTarget.style.transform = 'scaleY(1) scaleX(1)';
+                    }}
+                    title={`Week ${index + 1}: $${value.toFixed(1)}M`}
+                  />
+                );
+              })}
             </div>
             
             {/* Y-axis labels */}
@@ -846,13 +991,41 @@ const VentureIntelligenceDashboard = () => {
               textAlign: 'right',
               paddingRight: '8px'
             }}>
-              <span>$300M</span>
-              <span>$250M</span>
-              <span>$200M</span>
-              <span>$150M</span>
-              <span>$100M</span>
-              <span>$50M</span>
-              <span>$0</span>
+              {(() => {
+                // Calculate dynamic y-axis with uniform intervals
+                const maxValue = Math.max(...fundingTimelineData, 50); // minimum 50M
+                
+                // Determine nice round interval based on max value
+                let interval;
+                if (maxValue <= 100) interval = 20;
+                else if (maxValue <= 200) interval = 50;
+                else if (maxValue <= 500) interval = 100;
+                else if (maxValue <= 1000) interval = 200;
+                else if (maxValue <= 2000) interval = 500;
+                else interval = 1000;
+                
+                // Calculate rounded max that's a multiple of interval
+                const roundedMax = Math.ceil(maxValue / interval) * interval;
+                
+                const labels = [];
+                const steps = 6; // 7 labels total (including 0)
+                const uniformInterval = roundedMax / steps;
+                
+                for (let i = steps; i >= 0; i--) {
+                  const value = uniformInterval * i;
+                  if (value >= 1000) {
+                    labels.push(`$${(value / 1000).toFixed(1)}B`);
+                  } else if (value >= 1) {
+                    labels.push(`$${Math.round(value)}M`);
+                  } else {
+                    labels.push('$0');
+                  }
+                }
+                
+                return labels.map((label, idx) => (
+                  <span key={idx}>{label}</span>
+                ));
+              })()}
             </div>
 
             {/* Chart border */}
@@ -880,10 +1053,10 @@ const VentureIntelligenceDashboard = () => {
             {(() => {
               const now = new Date();
               const dates = [];
-              // Generate 5 date labels for 30 days (every 7 days approximately)
+              // Generate 5 date labels for 90 days (every 18 days approximately)
               for (let i = 4; i >= 0; i--) {
                 const date = new Date(now);
-                date.setDate(date.getDate() - (i * 7));
+                date.setDate(date.getDate() - (i * 18));
                 dates.push(date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }));
               }
               return dates.map((date, idx) => <span key={idx}>{date}</span>);
@@ -903,25 +1076,32 @@ const VentureIntelligenceDashboard = () => {
           }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData?.last30Days.totalRaised || '$0'}
+                {fundingData ? (() => {
+                  const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                  return total90Day >= 1e9 ? `$${(total90Day / 1e9).toFixed(1)}B` :
+                         total90Day >= 1e6 ? `$${(total90Day / 1e6).toFixed(0)}M` :
+                         total90Day >= 1e3 ? `$${(total90Day / 1e3).toFixed(0)}K` :
+                         `$${total90Day.toFixed(0)}`;
+                })() : '$0'}
               </div>
-              <div style={{ fontSize: '12px' }}>30-Day Total</div>
+              <div style={{ fontSize: '12px' }}>90-Day Total</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
                 {fundingData ? (() => {
-                  const total = fundingData.last30Days.totalRaised;
-                  const num = parseFloat(total.replace(/[^0-9.]/g, ''));
-                  const isB = total.includes('B');
-                  const weeklyAvg = isB ? num / 4 : num / 4000; // Divide by 4 weeks, convert to B if needed
-                  return `$${weeklyAvg.toFixed(1)}B`;
+                  const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                  const weeklyAvg = total90Day / 13; // 90 days ≈ 13 weeks
+                  return weeklyAvg >= 1e9 ? `$${(weeklyAvg / 1e9).toFixed(1)}B` :
+                         weeklyAvg >= 1e6 ? `$${(weeklyAvg / 1e6).toFixed(1)}M` :
+                         weeklyAvg >= 1e3 ? `$${(weeklyAvg / 1e3).toFixed(0)}K` :
+                         `$${weeklyAvg.toFixed(0)}`;
                 })() : '$0'}
               </div>
               <div style={{ fontSize: '12px' }}>Weekly Avg</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#10b981', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData?.last30Days.dealCount || 0}
+                {fundingData ? fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0) : 0}
               </div>
               <div style={{ fontSize: '12px' }}>Total Deals</div>
             </div>
@@ -955,123 +1135,15 @@ const VentureIntelligenceDashboard = () => {
                 Real-time funding activity
               </p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <button style={{
-                padding: '6px 12px',
-                background: '#13141a',
-                borderRadius: '6px',
-                fontSize: '12px',
-                color: '#ffffff',
-                border: 'none',
-                cursor: 'pointer'
-              }}>
-                BPS
-              </button>
-              <button style={{
-                padding: '6px 12px',
-                background: '#13141a',
-                borderRadius: '6px',
-                fontSize: '12px',
-                color: '#ffffff',
-                border: 'none',
-                cursor: 'pointer'
-              }}>
-                Last 30D ▼
-              </button>
-            </div>
           </div>
 
           {/* Search and Filters */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
+            gridTemplateColumns: 'repeat(2, 1fr)',
             gap: '16px',
             marginBottom: '24px'
           }}>
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '12px',
-                color: '#9ca3af',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                Search
-              </label>
-              <input
-                type="text"
-                placeholder="Search token name or symbol..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: '#13141a',
-                  border: '1px solid #2a2b35',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  fontSize: '14px',
-                  color: '#ffffff',
-                  outline: 'none'
-                }}
-              />
-            </div>
-            
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '12px',
-                color: '#9ca3af',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                Company
-              </label>
-              <select 
-                value={selectedCompany}
-                size={1}
-                style={{
-                  width: '100%',
-                  background: '#13141a',
-                  border: '1px solid #2a2b35',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  fontSize: '14px',
-                  color: '#ffffff',
-                  outline: 'none',
-                  maxHeight: '40px',
-                  overflow: 'hidden'
-                }}
-                onFocus={(e) => {
-                  e.target.size = Math.min(6, uniqueCompanies.length);
-                  e.target.style.position = 'absolute';
-                  e.target.style.zIndex = '1000';
-                  e.target.style.maxHeight = '160px';
-                  e.target.style.overflowY = 'auto';
-                }}
-                onBlur={(e) => {
-                  e.target.size = 1;
-                  e.target.style.position = 'static';
-                  e.target.style.zIndex = 'auto';
-                  e.target.style.maxHeight = '40px';
-                  e.target.style.overflowY = 'hidden';
-                }}
-                onChange={(e) => {
-                  setSelectedCompany(e.target.value);
-                  e.target.size = 1;
-                  e.target.style.position = 'static';
-                  e.target.style.zIndex = 'auto';
-                  e.target.style.maxHeight = '40px';
-                  e.target.style.overflowY = 'hidden';
-                  e.target.blur();
-                }}>
-                {uniqueCompanies.map(company => (
-                  <option key={company} value={company}>{company}</option>
-                ))}
-              </select>
-            </div>
-            
             <div>
               <label style={{
                 display: 'block',
@@ -1100,38 +1172,6 @@ const VentureIntelligenceDashboard = () => {
                 }}>
                 {uniqueRounds.map(round => (
                   <option key={round} value={round}>{round}</option>
-                ))}
-              </select>
-            </div>
-            
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '12px',
-                color: '#9ca3af',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                Investor
-              </label>
-              <select 
-                value={selectedInvestor}
-                onChange={(e) => setSelectedInvestor(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: '#13141a',
-                  border: '1px solid #2a2b35',
-                  borderRadius: '8px',
-                  padding: '8px 12px',
-                  fontSize: '14px',
-                  color: '#ffffff',
-                  outline: 'none',
-                  maxHeight: '40px',
-                  overflow: 'hidden'
-                }}>
-                {uniqueInvestors.map(investor => (
-                  <option key={investor} value={investor}>{investor}</option>
                 ))}
               </select>
             </div>
@@ -1179,24 +1219,11 @@ const VentureIntelligenceDashboard = () => {
               }}>
                 Actions
               </label>
-              <div style={{ display: 'flex', gap: '8px' }}>
-              <button style={{
-                flex: 1,
-                background: 'rgba(86, 94, 210, 0.20)',
-                border: '1px solid rgba(86, 94, 210, 0.60)',
-                borderRadius: '8px',
-                fontSize: '14px',
-                fontWeight: '500',
-                color: '#ffffff',
-                padding: '8px',
-                cursor: 'pointer'
-              }}>
-                Search
-              </button>
+              <div>
               <button 
                 onClick={resetAllFilters}
                 style={{
-                  flex: 1,
+                  width: '100%',
                   background: '#13141a',
                   border: '1px solid #2a2b35',
                   borderRadius: '8px',
@@ -1241,11 +1268,11 @@ const VentureIntelligenceDashboard = () => {
               textTransform: 'uppercase',
               letterSpacing: '0.5px'
             }}>
-              <div>Time</div>
+              <div>Date</div>
               <div>Company</div>
               <div>Round</div>
               <div>Amount</div>
-              <div>Lead Investor</div>
+              <div>Investors</div>
             </div>
 
             {/* Table Rows */}

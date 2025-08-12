@@ -7,9 +7,9 @@ import { ListingsDashboardData } from '@/app/types/listings';
 import { CardSkeleton, Skeleton } from '@/components/skeleton';
 
 const RecentListingsTrackerFeed = () => {
-  const [searchQuery, setSearchQuery] = useState('');
   const [selectedExchange, setSelectedExchange] = useState('All Exchanges');
   const [selectedType, setSelectedType] = useState('All types');
+  const [selectedPeriod, setSelectedPeriod] = useState<'30d' | '90d' | 'ytd'>('30d');
   const [liveUpdates, setLiveUpdates] = useState(true);
   const [listingsData, setListingsData] = useState<ListingsDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -18,7 +18,7 @@ const RecentListingsTrackerFeed = () => {
   // Fetch listings data
   const fetchListingsData = useCallback(async () => {
     try {
-      const response = await fetch('/api/listings');
+      const response = await fetch(`/api/listings?period=${selectedPeriod}&trends=true`);
       if (!response.ok) {
         throw new Error('Failed to fetch listings data');
       }
@@ -29,29 +29,190 @@ const RecentListingsTrackerFeed = () => {
       console.error('Error fetching listings data:', err);
       setError('Failed to load listings data');
     } finally {
-      if (loading) setLoading(false);
+      setLoading(false);
     }
-  }, [loading]);
+  }, [selectedPeriod]);
 
   // Initial load and 30-second polling
   useEffect(() => {
+    setLoading(true); // Show loading when period changes
     fetchListingsData();
     
     if (liveUpdates) {
       const interval = setInterval(fetchListingsData, 30000); // 30 seconds
       return () => clearInterval(interval);
     }
-  }, [liveUpdates, fetchListingsData]);
+  }, [liveUpdates, selectedPeriod, fetchListingsData]);
 
 
+  // Get period-specific data first
+  const getPeriodData = () => {
+    if (!listingsData) return null;
+    
+    let data;
+    switch (selectedPeriod) {
+      case '30d':
+        data = listingsData.last30Days;
+        break;
+      case '90d':
+        data = listingsData.last90Days;
+        break;
+      case 'ytd':
+        data = listingsData.yearToDate;
+        break;
+      default:
+        data = listingsData.last30Days;
+    }
+    
+    return data;
+  };
+  
+  const periodData = getPeriodData();
+  
   // Get data from API or use fallbacks
-  const tokenCards = listingsData?.tokenCards || [];
-  const treemapData = listingsData?.treemapData || [];
-  const adoptionMetrics = listingsData?.adoptionMetrics || [];
-  const exchangeActivity = listingsData?.exchangeActivity || [];
-  const fastestGrowing = listingsData?.fastestGrowing || [];
-  const newestListings = listingsData?.newestListings || [];
-  const liveListings = listingsData?.liveListings || [];
+  // Filter all data based on selected period
+  const getFilteredData = () => {
+    if (!listingsData || !periodData) {
+      return {
+        tokenCards: [],
+        treemapData: [],
+        exchangeActivity: [],
+        fastestGrowing: [],
+        newestListings: [],
+        liveListings: []
+      };
+    }
+    
+    // Use period-specific listings for all displays
+    const periodListings = periodData.newListings || [];
+    
+    // Generate token cards from period-specific listings
+    const tokenCards = periodListings
+      .sort((a, b) => b.exchangesCount - a.exchangesCount)
+      .slice(0, 8)
+      .map(token => ({
+        symbol: token.ticker,
+        name: token.name,
+        exchanges: token.exchanges,
+        exchangeCount: token.exchangesCount,
+        adoption24h: token.trendDisplay || 'NEW',
+        momentum: token.momentum,
+        momentumColor: token.momentumColor,
+        listedOn: token.exchangesDisplay,
+        lastUpdated: token.lastUpdatedDisplay,
+        priceChange: token.priceChangePct24h,
+        volume: token.volume24hDisplay
+      }));
+    
+    // Generate treemap data from period-specific listings
+    const treemapData = periodListings
+      .sort((a, b) => b.exchangesCount - a.exchangesCount)
+      .slice(0, 20)
+      .map(token => ({
+        name: token.ticker,
+        value: token.exchangesCount,
+        size: token.exchangesCount * 10,
+        fill: token.momentumColor,
+        changeType: token.priceChangePct24h && token.priceChangePct24h > 0 ? 'positive' as const : 
+                    token.priceChangePct24h && token.priceChangePct24h < 0 ? 'negative' as const : 'neutral' as const,
+        chartData: token.chartData,
+        ticker: token.ticker,
+        exchangesCount: token.exchangesCount
+      }));
+    
+    // Calculate exchange activity from last 24 hours only (not period-specific)
+    const twentyFourHoursAgo = new Date();
+    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+    
+    const last24HourListings = listingsData?.processedListings?.filter(token => {
+      const scrapedDate = token.scrapedAt instanceof Date ? token.scrapedAt : new Date(token.scrapedAt);
+      return scrapedDate >= twentyFourHoursAgo;
+    }) || [];
+    
+    const exchangeCount: Record<string, number> = {};
+    last24HourListings.forEach(token => {
+      token.exchanges.forEach(exchange => {
+        exchangeCount[exchange] = (exchangeCount[exchange] || 0) + 1;
+      });
+    });
+    
+    const exchangeActivity = Object.entries(exchangeCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 4)
+      .map(([name, count]) => ({ name, count, status: 'new' as const }));
+    
+    // Fastest growing based on trend data
+    const fastestGrowing = periodListings
+      .filter(token => token.trendPercentage !== undefined && token.trendPercentage > 0)
+      .sort((a, b) => (b.trendPercentage || 0) - (a.trendPercentage || 0))
+      .slice(0, 4)
+      .map(token => ({
+        symbol: token.ticker,
+        exchanges: token.trendDisplay || `+${token.exchangesCount} exchanges`,
+        status: 'up' as const
+      }));
+    
+    // Newest listings (most recently scraped within period)
+    const newestListings = periodListings
+      .sort((a, b) => {
+        const dateA = a.scrapedAt instanceof Date ? a.scrapedAt : new Date(a.scrapedAt);
+        const dateB = b.scrapedAt instanceof Date ? b.scrapedAt : new Date(b.scrapedAt);
+        return dateB.getTime() - dateA.getTime();
+      })
+      .slice(0, 4)
+      .map(token => {
+        const scrapedDate = token.scrapedAt instanceof Date ? token.scrapedAt : new Date(token.scrapedAt);
+        return {
+          symbol: token.ticker,
+          exchange: `on ${token.exchanges[0] || 'Unknown'}`,
+          time: `${Math.floor((Date.now() - scrapedDate.getTime()) / (1000 * 60 * 60))}h ago`
+        };
+      });
+    
+    // Live listings feed from period-specific data
+    const liveListings = periodListings
+      .slice(0, 10)
+      .map(token => {
+        const scrapedDate = token.scrapedAt instanceof Date ? token.scrapedAt : new Date(token.scrapedAt);
+        return {
+          timestamp: scrapedDate.toLocaleTimeString('en-US', { 
+            hour12: false,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit'
+          }),
+          exchange: token.exchanges[0] || 'Unknown',
+          asset: token.ticker,
+          name: token.name,
+          type: 'SPOT' as const,
+          status: 'Live' as const,
+          price: token.priceDisplay,
+          sourceMessage: token.sourceMessage
+        };
+      });
+    
+    return {
+      tokenCards,
+      treemapData,
+      exchangeActivity,
+      fastestGrowing,
+      newestListings,
+      liveListings
+    };
+  };
+  
+  const { tokenCards, treemapData, exchangeActivity, fastestGrowing, newestListings, liveListings } = getFilteredData();
+  
+  // Generate adoption metrics from period data
+  const adoptionMetrics = periodData ? [
+    { title: `New Listings (${selectedPeriod.toUpperCase()})`, value: periodData.totalNewListings || 0 },
+    { title: 'Top New Listing', value: periodData.topNewListings?.[0]?.ticker ? `${periodData.topNewListings[0].ticker} (${periodData.topNewListings[0].exchangesCount} exchanges)` : 'N/A' },
+    { title: 'Period Coverage', value: selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}` }
+  ] : [
+    { title: `New Listings (${selectedPeriod.toUpperCase()})`, value: '—' },
+    { title: 'Top New Listing', value: '—' },
+    { title: 'Period Coverage', value: selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}` }
+  ];
 
   const CustomTreemapContent = (props: {
     x: number;
@@ -278,14 +439,28 @@ const RecentListingsTrackerFeed = () => {
                 gap: '4px',
                 padding: '8px'
               }}>
-                {Array.from({ length: 8 }).map((_, i) => (
-                  <Skeleton
-                    key={i}
-                    width={`${60 + Math.random() * 80}px`}
-                    height={`${40 + Math.random() * 60}px`}
-                    borderRadius="4px"
-                  />
-                ))}
+                {Array.from({ length: 8 }).map((_, i) => {
+                  // Use predefined sizes to avoid hydration mismatch
+                  const sizes = [
+                    { width: '120px', height: '80px' },
+                    { width: '100px', height: '70px' },
+                    { width: '110px', height: '85px' },
+                    { width: '90px', height: '60px' },
+                    { width: '130px', height: '90px' },
+                    { width: '80px', height: '55px' },
+                    { width: '115px', height: '75px' },
+                    { width: '95px', height: '65px' }
+                  ];
+                  const size = sizes[i] || sizes[0];
+                  return (
+                    <Skeleton
+                      key={i}
+                      width={size.width}
+                      height={size.height}
+                      borderRadius="4px"
+                    />
+                  );
+                })}
               </div>
             </CardSkeleton>
           </div>
@@ -360,29 +535,109 @@ const RecentListingsTrackerFeed = () => {
 
   return (
     <SharedLayout currentPage="listings-feed">
+      <style jsx>{`
+        @keyframes spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+      `}</style>
       <div style={{
         padding: '30px',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
       }}>
         {/* Header */}
         <div style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'flex-start',
           marginBottom: '30px'
         }}>
-          <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
-            Recent Listings Tracker Feed
-          </h1>
-          <p style={{ fontSize: '14px', color: '#9ca3af' }}>
-            Real-time listing intelligence and performance tracking
-          </p>
+          <div>
+            <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
+              Listings Tracker Feed
+            </h1>
+            <p style={{ fontSize: '14px', color: '#9ca3af' }}>
+              Tracking new listings {selectedPeriod === 'ytd' ? 'Year to Date' : `from the last ${selectedPeriod.replace('d', ' days')}`}
+            </p>
+          </div>
+          
+          {/* Time Period Selector */}
+          <div style={{
+            display: 'flex',
+            background: '#1A1B1E',
+            borderRadius: '8px',
+            border: '1px solid #212228',
+            padding: '4px'
+          }}>
+            {(['30d', '90d', 'ytd'] as const).map((period) => {
+              const isSelected = selectedPeriod === period;
+              const periodLabels = {
+                '30d': 'Last 30 Days',
+                '90d': 'Last 90 Days', 
+                'ytd': 'Year to Date'
+              };
+              
+              return (
+                <button
+                  key={period}
+                  onClick={() => {
+                    setSelectedPeriod(period);
+                    setLoading(true);
+                  }}
+                  disabled={loading}
+                  style={{
+                    padding: '8px 16px',
+                    background: isSelected ? '#3b82f6' : 'transparent',
+                    border: 'none',
+                    borderRadius: '6px',
+                    color: isSelected ? '#ffffff' : '#9ca3af',
+                    fontSize: '14px',
+                    fontWeight: isSelected ? '500' : '400',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    opacity: loading && !isSelected ? 0.5 : 1,
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = '#2a2b35';
+                      e.currentTarget.style.color = '#ffffff';
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.background = 'transparent';
+                      e.currentTarget.style.color = '#9ca3af';
+                    }
+                  }}
+                >
+                  {loading && isSelected ? (
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{
+                        width: '12px',
+                        height: '12px',
+                        border: '2px solid transparent',
+                        borderTop: '2px solid currentColor',
+                        borderRadius: '50%',
+                        animation: 'spin 1s linear infinite'
+                      }} />
+                      Loading...
+                    </span>
+                  ) : (
+                    periodLabels[period]
+                  )}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {/* Adoption Map Section */}
         <div style={{ marginBottom: '40px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#ffffff' }}>
-            Adoption Map
+            Adoption Map ({selectedPeriod.toUpperCase()})
           </h2>
           <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-            Assets by Exchange Listings
+            New Assets by Exchange Listings - {selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}`}
           </p>
 
           {/* Token Cards Grid */}
@@ -656,10 +911,10 @@ const RecentListingsTrackerFeed = () => {
             border: '1px solid #212228'
           }}>
             <h3 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: '#ffffff' }}>
-              Matrix Analysis Summary
+              Matrix Analysis Summary ({selectedPeriod.toUpperCase()})
             </h3>
             
-            <div style={{ height: '300px', width: '100%' }}>
+            <div style={{ height: '500px', width: '100%' }}>
               <ResponsiveContainer width="100%" height="100%">
                 <Treemap
                   data={treemapData}
@@ -676,7 +931,7 @@ const RecentListingsTrackerFeed = () => {
         {/* Metrics Row */}
         <div style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(2, 1fr)',
           gap: '20px',
           marginBottom: '40px'
         }}>
@@ -688,7 +943,7 @@ const RecentListingsTrackerFeed = () => {
             border: '1px solid #212228'
           }}>
             <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#9ca3af', marginBottom: '16px' }}>
-              Adoption Metrics
+              Period Metrics ({selectedPeriod.toUpperCase()})
             </h3>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
               {adoptionMetrics.map((metric, index) => (
@@ -740,70 +995,6 @@ const RecentListingsTrackerFeed = () => {
               ))}
             </div>
           </div>
-
-          {/* Fastest Growing */}
-          <div style={{
-            background: '#1A1B1E',
-            borderRadius: '12px',
-            padding: '20px',
-            border: '1px solid #212228'
-          }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#9ca3af', marginBottom: '4px' }}>
-              Fastest Growing
-            </h3>
-            <p style={{ fontSize: '12px', color: '#6b7280', marginBottom: '16px' }}>
-              Last 24h
-            </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {fastestGrowing.map((item, index) => (
-                <div key={index} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <span style={{ fontSize: '14px', fontWeight: '500', color: '#ffffff' }}>
-                    {item.symbol}
-                  </span>
-                  <span style={{ fontSize: '12px', color: '#10b981' }}>
-                    {item.exchanges}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Newest Listings */}
-          <div style={{
-            background: '#1A1B1E',
-            borderRadius: '12px',
-            padding: '20px',
-            border: '1px solid #212228'
-          }}>
-            <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#9ca3af', marginBottom: '16px' }}>
-              Newest Listings
-            </h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              {newestListings.map((listing, index) => (
-                <div key={index} style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <span style={{ fontSize: '14px', fontWeight: '500', color: '#ffffff' }}>
-                      {listing.symbol}
-                    </span>
-                    <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-                      {listing.exchange}
-                    </span>
-                  </div>
-                  <span style={{ fontSize: '12px', color: '#6b7280' }}>
-                    {listing.time}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
         </div>
 
         {/* Live Listings Feed */}
@@ -826,116 +1017,64 @@ const RecentListingsTrackerFeed = () => {
               <div style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '16px',
                 marginTop: '8px'
               }}>
                 <div style={{
-                  width: '8px',
-                  height: '8px',
-                  borderRadius: '50%',
-                  background: liveUpdates ? '#10b981' : '#6b7280'
-                }}></div>
-                <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-                  {liveUpdates ? 'Live updates active' : 'Updates paused'}
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px'
+                }}>
+                  <div style={{
+                    width: '8px',
+                    height: '8px',
+                    borderRadius: '50%',
+                    background: liveUpdates ? '#10b981' : '#6b7280'
+                  }}></div>
+                  <span style={{ fontSize: '12px', color: '#9ca3af' }}>
+                    {liveUpdates ? 'Live updates active' : 'Updates paused'}
+                  </span>
+                </div>
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>
+                  Showing: {selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}`}
                 </span>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '8px' }}>
-              <button
-                style={{
-                  padding: '8px 16px',
-                  background: '#3b82f6',
-                  border: 'none',
-                  borderRadius: '8px',
-                  color: '#ffffff',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'background 0.3s ease'
-                }}
-                onMouseEnter={(e) => e.currentTarget.style.background = '#2563eb'}
-                onMouseLeave={(e) => e.currentTarget.style.background = '#3b82f6'}
-              >
-                Search
-              </button>
-              <button
-                style={{
-                  padding: '8px 16px',
-                  background: '#13141a',
-                  border: '1px solid #2a2b35',
-                  borderRadius: '8px',
-                  color: '#9ca3af',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#1a1b23';
-                  e.currentTarget.style.color = '#ffffff';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#13141a';
-                  e.currentTarget.style.color = '#9ca3af';
-                }}
-              >
-                Reset all
-              </button>
-              <button
-                onClick={() => setLiveUpdates(!liveUpdates)}
-                style={{
-                  padding: '8px 16px',
-                  background: liveUpdates ? '#10b981' : '#13141a',
-                  border: `1px solid ${liveUpdates ? '#10b981' : '#2a2b35'}`,
-                  borderRadius: '8px',
-                  color: liveUpdates ? '#ffffff' : '#9ca3af',
-                  fontSize: '14px',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-              >
-                {liveUpdates ? 'Pause' : 'Resume'}
-              </button>
-            </div>
+            <button
+              style={{
+                padding: '8px 16px',
+                background: '#13141a',
+                border: '1px solid #2a2b35',
+                borderRadius: '8px',
+                color: '#9ca3af',
+                fontSize: '14px',
+                cursor: 'pointer',
+                transition: 'all 0.3s ease'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#1a1b23';
+                e.currentTarget.style.color = '#ffffff';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = '#13141a';
+                e.currentTarget.style.color = '#9ca3af';
+              }}
+              onClick={() => {
+                setSelectedExchange('All Exchanges');
+                setSelectedType('All types');
+              }}
+            >
+              Reset all
+            </button>
           </div>
 
           {/* Filters */}
           <div style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(5, 1fr)',
+            gridTemplateColumns: 'repeat(4, 1fr)',
             gap: '16px',
             marginBottom: '24px'
           }}>
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '12px',
-                color: '#9ca3af',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                Search
-              </label>
-              <input
-                type="text"
-                placeholder="Search token name or symbol..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                style={{
-                  width: '100%',
-                  background: '#13141a',
-                  border: '1px solid #2a2b35',
-                  borderRadius: '8px',
-                  padding: '8px 24px 8px 12px',
-                  fontSize: '14px',
-                  color: '#ffffff',
-                  outline: 'none',
-                  transition: 'border-color 0.3s ease'
-                }}
-                onFocus={(e) => e.target.style.borderColor = '#10b981'}
-                onBlur={(e) => e.target.style.borderColor = '#2a2b35'}
-              />
-            </div>
-            
             <div>
               <label style={{
                 display: 'block',
@@ -958,14 +1097,40 @@ const RecentListingsTrackerFeed = () => {
                   padding: '8px 24px 8px 12px',
                   fontSize: '14px',
                   color: '#ffffff',
-                  outline: 'none'
+                  outline: 'none',
+                  cursor: 'pointer'
                 }}
               >
                 <option>All Exchanges</option>
+                <option>Aevo pre-market</option>
+                <option>AsendEx</option>
                 <option>Binance</option>
-                <option>MEXC</option>
-                <option>Gate</option>
+                <option>Binance alpha projects</option>
+                <option>Binance futures</option>
+                <option>Binance hodler airdrops</option>
+                <option>Bithumb spot</option>
+                <option>Bitmart</option>
                 <option>Bybit</option>
+                <option>Bybit futures</option>
+                <option>Bybit pre-market</option>
+                <option>Bybit soon on spot</option>
+                <option>Bybit spot</option>
+                <option>Coinbase</option>
+                <option>Coinbase International futures</option>
+                <option>Coinbase International pre-market</option>
+                <option>Coinbase roadmap</option>
+                <option>Coinbase Spot</option>
+                <option>Gate</option>
+                <option>Hyperliquid</option>
+                <option>Hyperliquid futures</option>
+                <option>Kraken</option>
+                <option>MEXC</option>
+                <option>OKX futures</option>
+                <option>OKX spot</option>
+                <option>Robinhood spot</option>
+                <option>Upbit</option>
+                <option>Upbit spot</option>
+                <option>Upbit spot (KRW)</option>
               </select>
             </div>
             
@@ -1086,10 +1251,7 @@ const RecentListingsTrackerFeed = () => {
             {liveListings
               .filter(listing => 
                 (selectedExchange === 'All Exchanges' || listing.exchange === selectedExchange) &&
-                (selectedType === 'All types' || listing.type === selectedType) &&
-                (searchQuery === '' || 
-                  listing.asset.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                  listing.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                (selectedType === 'All types' || listing.type === selectedType)
               )
               .map((listing, index) => (
               <div
@@ -1108,25 +1270,9 @@ const RecentListingsTrackerFeed = () => {
                 onMouseEnter={(e) => e.currentTarget.style.background = '#1a1b23'}
                 onMouseLeave={(e) => e.currentTarget.style.background = '#13141a'}
               >
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <input 
-                    type="checkbox" 
-                    style={{
-                      width: '16px',
-                      height: '16px',
-                      borderRadius: '4px',
-                      background: '#2a2b35',
-                      border: '1px solid #404040'
-                    }}
-                  />
-                  <span style={{ fontSize: '14px', color: '#9ca3af' }}>
-                    {listing.timestamp}
-                  </span>
-                </div>
+                <span style={{ fontSize: '14px', color: '#9ca3af' }}>
+                  {listing.timestamp}
+                </span>
                 <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '500' }}>
                   {listing.exchange}
                 </div>

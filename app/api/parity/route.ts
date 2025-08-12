@@ -1,12 +1,14 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
+import { authOptions } from '@/app/api/auth/[...nextauth]/route';
 import { processParityData } from '@/app/lib/parity-utils';
 import { RawParityRecord } from '@/app/types/parity';
+import { prisma } from '@/lib/prisma';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     // Check authentication
-    const session = await getServerSession();
+    const session = await getServerSession(authOptions);
     if (!session) {
       return NextResponse.json(
         { error: 'Unauthorized' },
@@ -42,10 +44,32 @@ export async function GET() {
     
     const rawData: RawParityRecord[] = await response.json();
     
-    // Process the data
-    const processedData = processParityData(rawData);
+    // Get user's base exchange preference
+    let baseExchange = 'binance'; // default
+    if (session?.user?.email) {
+      const user = await prisma.user.findUnique({
+        where: { email: session.user.email },
+        select: { baseExchange: true }
+      });
+      if (user?.baseExchange) {
+        baseExchange = user.baseExchange;
+      }
+    }
     
-    return NextResponse.json(processedData);
+    // Get base exchange from query params if provided (overrides user preference)
+    const { searchParams } = new URL(request.url);
+    const requestedExchange = searchParams.get('baseExchange');
+    if (requestedExchange) {
+      baseExchange = requestedExchange;
+    }
+    
+    // Process the data with base exchange
+    const processedData = processParityData(rawData, baseExchange);
+    
+    return NextResponse.json({
+      ...processedData,
+      baseExchange
+    });
     
   } catch (error) {
     console.error('Parity API error:', error);

@@ -112,16 +112,237 @@ export const getCategoryColor = (category: string): string => {
     'Privacy': '#6366f1',
     'Enterprise': '#84cc16',
     'NFTs': '#a855f7',
+    'Identity': '#f59e0b',
+    'Security': '#ef4444',
+    'Mining': '#78716c',
+    'Wallets': '#14b8a6',
+    'Data': '#8b5a2b',
     'Others': '#6b7280'
   };
   
   return colors[category] || colors['Others'];
 };
 
+// Process 90-day funding categories for treemap
+export const process90DayFundingCategories = (processedRecords: ProcessedFundingRecord[]): CategoryMetrics[] => {
+  console.log('=== PROCESSING 90-DAY FUNDING CATEGORIES ===');
+  
+  // Filter records to last 90 days
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  
+  const last90DaysRecords = processedRecords.filter(record => {
+    const recordDate = new Date(record.date);
+    return recordDate >= ninetyDaysAgo;
+  });
+  
+  console.log('Total records:', processedRecords.length);
+  console.log('90-day records:', last90DaysRecords.length);
+  console.log('90 days ago cutoff:', ninetyDaysAgo);
+  
+  // All sectors to ensure complete coverage
+  const allSectors = [
+    'Infrastructure', 'DeFi', 'Gaming', 'AI', 'Trading', 'Social', 
+    'Privacy', 'Enterprise', 'NFTs', 'Identity', 'Security', 
+    'Mining', 'Wallets', 'Data', 'Others'
+  ];
+  
+  const categoryMap = new Map<string, { total: number; count: number }>();
+  
+  // Initialize all sectors with zero values
+  allSectors.forEach(sector => {
+    categoryMap.set(sector, { total: 0, count: 0 });
+  });
+  
+  // Add 90-day funding data
+  last90DaysRecords.forEach(record => {
+    const cat = record.classifiedCategory || 'Others';
+    const existing = categoryMap.get(cat) || { total: 0, count: 0 };
+    existing.total += record.amount;
+    existing.count += 1;
+    categoryMap.set(cat, existing);
+  });
+  
+  // Calculate total for percentages
+  const total90DayFunding = last90DaysRecords.reduce((sum, r) => sum + r.amount, 0);
+  
+  const last90DaysCategories: CategoryMetrics[] = Array.from(categoryMap.entries())
+    .map(([category, data]) => ({
+      category,
+      totalAmount: data.total,
+      totalAmountDisplay: formatAmount(data.total),
+      percentage: total90DayFunding > 0 ? (data.total / total90DayFunding) * 100 : 0,
+      dealCount: data.count,
+      color: getCategoryColor(category)
+    }))
+    .sort((a, b) => b.totalAmount - a.totalAmount);
+  
+  console.log('90-day categories with funding:', last90DaysCategories.filter(c => c.totalAmount > 0).map(c => `${c.category}: ${c.totalAmountDisplay} (${c.dealCount} deals)`));
+  console.log('90-day categories with zero funding:', last90DaysCategories.filter(c => c.totalAmount === 0).map(c => c.category));
+  console.log('Total 90-day funding:', formatAmount(total90DayFunding));
+  
+  return last90DaysCategories;
+};
+
+// Calculate trend data by comparing current vs previous periods
+export const calculateTrendData = async (periodDays: number = 7): Promise<Record<string, {
+  trendPercentage: number;
+  trendDirection: 'up' | 'down' | 'neutral';
+  trendDisplay: string;
+  previousAmount: number;
+}>> => {
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    
+    console.log(`=== CALCULATING ${periodDays}-DAY TRENDS ===`);
+    
+    // Get current period (last N days)
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // End of today
+    
+    const currentPeriodStart = new Date(today);
+    currentPeriodStart.setDate(currentPeriodStart.getDate() - periodDays);
+    currentPeriodStart.setHours(0, 0, 0, 0);
+    
+    // Get previous period (N days before current period)
+    const previousPeriodEnd = new Date(currentPeriodStart);
+    previousPeriodEnd.setMilliseconds(previousPeriodEnd.getMilliseconds() - 1);
+    
+    const previousPeriodStart = new Date(previousPeriodEnd);
+    previousPeriodStart.setDate(previousPeriodStart.getDate() - periodDays);
+    previousPeriodStart.setHours(0, 0, 0, 0);
+    
+    console.log('Current period:', currentPeriodStart.toISOString().split('T')[0], 'to', today.toISOString().split('T')[0]);
+    console.log('Previous period:', previousPeriodStart.toISOString().split('T')[0], 'to', previousPeriodEnd.toISOString().split('T')[0]);
+    
+    // Get current period data
+    const currentPeriodData = await prisma.fundingSnapshot.groupBy({
+      by: ['sector'],
+      where: {
+        date: {
+          gte: currentPeriodStart,
+          lte: today
+        }
+      },
+      _avg: {
+        totalAmount: true
+      },
+      _sum: {
+        dealCount: true
+      }
+    });
+    
+    // Get previous period data
+    const previousPeriodData = await prisma.fundingSnapshot.groupBy({
+      by: ['sector'],
+      where: {
+        date: {
+          gte: previousPeriodStart,
+          lte: previousPeriodEnd
+        }
+      },
+      _avg: {
+        totalAmount: true
+      },
+      _sum: {
+        dealCount: true
+      }
+    });
+    
+    console.log(`Found ${currentPeriodData.length} sectors in current period, ${previousPeriodData.length} in previous period`);
+    
+    // Create lookup maps
+    const currentMap = new Map(currentPeriodData.map(item => [item.sector, item._avg.totalAmount || 0]));
+    const previousMap = new Map(previousPeriodData.map(item => [item.sector, item._avg.totalAmount || 0]));
+    
+    // Calculate trends for all sectors
+    const allSectors = [
+      'Infrastructure', 'DeFi', 'Gaming', 'AI', 'Trading', 'Social', 
+      'Privacy', 'Enterprise', 'NFTs', 'Identity', 'Security', 
+      'Mining', 'Wallets', 'Data', 'Others'
+    ];
+    
+    const trends: Record<string, {
+      trendPercentage: number;
+      trendDirection: 'up' | 'down' | 'neutral';
+      trendDisplay: string;
+      previousAmount: number;
+    }> = {};
+    
+    for (const sector of allSectors) {
+      const currentAmount = currentMap.get(sector) || 0;
+      const previousAmount = previousMap.get(sector) || 0;
+      
+      let trendPercentage = 0;
+      let trendDirection: 'up' | 'down' | 'neutral' = 'neutral';
+      
+      if (previousAmount > 0) {
+        trendPercentage = ((currentAmount - previousAmount) / previousAmount) * 100;
+      } else if (currentAmount > 0) {
+        trendPercentage = 100; // New activity where there was none
+      }
+      
+      // Determine direction with 5% threshold for neutral
+      if (Math.abs(trendPercentage) < 5) {
+        trendDirection = 'neutral';
+      } else {
+        trendDirection = trendPercentage > 0 ? 'up' : 'down';
+      }
+      
+      const trendDisplay = trendPercentage > 0 ? 
+        `+${trendPercentage.toFixed(1)}%` : 
+        `${trendPercentage.toFixed(1)}%`;
+      
+      trends[sector] = {
+        trendPercentage,
+        trendDirection,
+        trendDisplay,
+        previousAmount
+      };
+      
+      console.log(`${sector}: ${trendDisplay} (${trendDirection}) - Current: $${(currentAmount/1e6).toFixed(1)}M, Previous: $${(previousAmount/1e6).toFixed(1)}M`);
+    }
+    
+    await prisma.$disconnect();
+    return trends;
+    
+  } catch (error) {
+    console.error('Trend calculation error:', error);
+    // Return neutral trends as fallback
+    const fallbackTrends: Record<string, any> = {};
+    const allSectors = [
+      'Infrastructure', 'DeFi', 'Gaming', 'AI', 'Trading', 'Social', 
+      'Privacy', 'Enterprise', 'NFTs', 'Identity', 'Security', 
+      'Mining', 'Wallets', 'Data', 'Others'
+    ];
+    
+    for (const sector of allSectors) {
+      fallbackTrends[sector] = {
+        trendPercentage: 0,
+        trendDirection: 'neutral',
+        trendDisplay: '0.0%',
+        previousAmount: 0
+      };
+    }
+    
+    return fallbackTrends;
+  }
+};
+
 // Process all funding data for dashboard
 export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboardData => {
+  console.log('=== PROCESSING FUNDING DATA ===');
+  console.log('Raw records count:', rawData.length);
+  
   // Process all records
   const processedRecords = rawData.map(processFundingRecord);
+  
+  console.log('Processed records count:', processedRecords.length);
+  if (processedRecords.length > 0) {
+    console.log('Sample processed record:', processedRecords[0]);
+    console.log('Categories in data:', [...new Set(processedRecords.map(r => r.classifiedCategory))]);
+  }
   
   // Filter last 30 days
   const thirtyDaysAgo = new Date();
@@ -132,6 +353,7 @@ export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboar
   const totalRaisedNum = processedRecords.reduce((sum, r) => sum + r.amount, 0);
   const last30DaysTotal = last30DaysRecords.reduce((sum, r) => sum + r.amount, 0);
   const avgRoundSizeNum = totalRaisedNum / (processedRecords.length || 1);
+  const last30DaysAvgRoundSizeNum = last30DaysTotal / (last30DaysRecords.length || 1);
   
   // Most Active Investors
   const investorMap = new Map<string, { total: number; deals: string[] }>();
@@ -155,8 +377,21 @@ export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboar
     .sort((a, b) => b.totalInvested - a.totalInvested)
     .slice(0, 10);
   
-  // Trending Categories
+  // Trending Categories - ensure all sectors are represented
+  const allSectors = [
+    'Infrastructure', 'DeFi', 'Gaming', 'AI', 'Trading', 'Social', 
+    'Privacy', 'Enterprise', 'NFTs', 'Identity', 'Security', 
+    'Mining', 'Wallets', 'Data', 'Others'
+  ];
+  
   const categoryMap = new Map<string, { total: number; count: number }>();
+  
+  // Initialize all sectors with zero values
+  allSectors.forEach(sector => {
+    categoryMap.set(sector, { total: 0, count: 0 });
+  });
+  
+  // Add actual funding data
   processedRecords.forEach(record => {
     const cat = record.classifiedCategory || 'Others';
     const existing = categoryMap.get(cat) || { total: 0, count: 0 };
@@ -170,12 +405,19 @@ export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboar
       category,
       totalAmount: data.total,
       totalAmountDisplay: formatAmount(data.total),
-      percentage: (data.total / totalRaisedNum) * 100,
+      percentage: totalRaisedNum > 0 ? (data.total / totalRaisedNum) * 100 : 0,
       dealCount: data.count,
       color: getCategoryColor(category)
     }))
-    .sort((a, b) => b.totalAmount - a.totalAmount)
-    .slice(0, 10);
+    .sort((a, b) => b.totalAmount - a.totalAmount);
+  
+  console.log('=== TRENDING CATEGORIES PROCESSED ===');
+  console.log('Categories with funding:', trendingCategories.filter(c => c.totalAmount > 0).map(c => `${c.category}: ${c.totalAmountDisplay} (${c.dealCount} deals)`));
+  console.log('Categories with zero funding:', trendingCategories.filter(c => c.totalAmount === 0).map(c => c.category));
+  console.log('Total raised across all categories:', formatAmount(totalRaisedNum));
+  
+  // Process 90-day categories for treemap
+  const last90DaysCategories = process90DayFundingCategories(processedRecords);
   
   // Monthly Funding
   const monthlyMap = new Map<string, number>();
@@ -210,11 +452,14 @@ export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboar
     avgRoundSizeNum,
     mostActiveInvestors,
     trendingCategories,
+    last90DaysCategories,
     latestRounds,
     monthlyFunding,
     last30Days: {
       totalRaised: formatAmount(last30DaysTotal),
-      dealCount: last30DaysRecords.length
+      dealCount: last30DaysRecords.length,
+      avgRoundSize: formatAmount(last30DaysAvgRoundSizeNum),
+      avgRoundSizeNum: last30DaysAvgRoundSizeNum
     }
   };
 };

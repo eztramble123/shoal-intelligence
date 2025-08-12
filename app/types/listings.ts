@@ -59,6 +59,11 @@ export interface ProcessedListingRecord {
   momentum: 'VERY HIGH' | 'HIGH' | 'MEDIUM' | 'LOW' | 'GROWING' | 'DECLINING';
   momentumColor: string;
   chartData: number[];
+  // Trend data for time-based analysis
+  previousExchangeCount?: number;
+  trendPercentage?: number;
+  trendDirection?: 'up' | 'down' | 'neutral';
+  trendDisplay?: string; // Formatted like "+15.3%" or "-8.7%"
 }
 
 // Live listing alert for real-time feed
@@ -134,4 +139,29 @@ export interface ListingsDashboardData {
     time: string;
   }[];
   totalRecords: number;
+  last24Hours: {
+    totalListings: number;
+    listings: ProcessedListingRecord[];
+  };
+  // Time-based period data
+  last30Days: {
+    newListings: ProcessedListingRecord[];
+    totalNewListings: number;
+    avgExchangesPerListing: number;
+    topNewListings: ProcessedListingRecord[];
+  };
+  last90Days: {
+    newListings: ProcessedListingRecord[];
+    totalNewListings: number;
+    avgExchangesPerListing: number;
+    topNewListings: ProcessedListingRecord[];
+  };
+  yearToDate: {
+    newListings: ProcessedListingRecord[];
+    totalNewListings: number;
+    avgExchangesPerListing: number;
+    topNewListings: ProcessedListingRecord[];
+  };
+  // Trending listings with real trend data
+  trendingListings: ProcessedListingRecord[];
 }

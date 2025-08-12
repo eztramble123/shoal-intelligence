@@ -27,12 +27,16 @@ export const parseAllExchanges = (exchangesStr: string): string[] => {
   return exchangesStr.split(',').map(e => e.trim()).filter(Boolean);
 };
 
-// Calculate coverage metrics for a token
-export const calculateCoverage = (exchanges: ProcessedParityRecord['exchanges']): {
+// Calculate coverage metrics for a token relative to base exchange
+export const calculateCoverage = (
+  exchanges: ProcessedParityRecord['exchanges'],
+  baseExchange: string = 'binance'
+): {
   count: number;
   percentage: number;
   ratio: string;
   missing: string[];
+  isOnBase: boolean;
 } => {
   const exchangeList = [
     { name: 'Binance', key: 'binance' as keyof typeof exchanges },
@@ -46,21 +50,42 @@ export const calculateCoverage = (exchanges: ProcessedParityRecord['exchanges'])
     { name: 'MEXC', key: 'mexc' as keyof typeof exchanges }
   ];
 
+  // Check if token is on base exchange
+  const isOnBase = exchanges[baseExchange as keyof typeof exchanges] || false;
+  
+  // If comparing to a base exchange, calculate coverage relative to that
+  if (baseExchange && baseExchange !== 'all') {
+    const otherExchanges = exchangeList.filter(ex => ex.key !== baseExchange);
+    const availableCount = otherExchanges.filter(ex => exchanges[ex.key]).length;
+    const percentage = Math.round((availableCount / otherExchanges.length) * 100);
+    const missing = otherExchanges.filter(ex => !exchanges[ex.key]).map(ex => ex.name);
+
+    return {
+      count: availableCount,
+      percentage,
+      ratio: `${availableCount}/${otherExchanges.length}`,
+      missing,
+      isOnBase
+    };
+  }
+  
+  // Default behavior (all exchanges)
   const availableCount = exchangeList.filter(ex => exchanges[ex.key]).length;
   const totalExchanges = exchangeList.length;
   const percentage = Math.round((availableCount / totalExchanges) * 100);
   const missing = exchangeList.filter(ex => !exchanges[ex.key]).map(ex => ex.name);
-
+  
   return {
     count: availableCount,
     percentage,
     ratio: `${availableCount}/${totalExchanges}`,
-    missing
+    missing,
+    isOnBase: false
   };
 };
 
 // Process raw parity record
-export const processParityRecord = (raw: RawParityRecord): ProcessedParityRecord => {
+export const processParityRecord = (raw: RawParityRecord, baseExchange: string = 'binance'): ProcessedParityRecord => {
   const exchanges = {
     binance: raw.isOnBinance || false,
     coinbase: raw.isOnCoinbase || false,
@@ -74,7 +99,7 @@ export const processParityRecord = (raw: RawParityRecord): ProcessedParityRecord
     huobi: false
   };
 
-  const coverage = calculateCoverage(exchanges);
+  const coverage = calculateCoverage(exchanges, baseExchange);
   const allExchanges = parseAllExchanges(raw.all_exchanges);
 
   return {
@@ -107,7 +132,7 @@ export const processParityRecord = (raw: RawParityRecord): ProcessedParityRecord
 };
 
 // Calculate coverage overview statistics
-export const calculateCoverageOverview = (tokens: ProcessedParityRecord[]): CoverageOverview => {
+export const calculateCoverageOverview = (tokens: ProcessedParityRecord[], baseExchange: string = 'binance'): CoverageOverview => {
   const totalTokens = tokens.length;
   const tokensMissing = tokens.filter(t => t.isMissing).length;
   
@@ -146,9 +171,9 @@ export const calculateCoverageOverview = (tokens: ProcessedParityRecord[]): Cove
 };
 
 // Process all parity data for dashboard
-export const processParityData = (rawData: RawParityRecord[]): ParityDashboardData => {
-  const tokens = rawData.map(processParityRecord);
-  const coverageOverview = calculateCoverageOverview(tokens);
+export const processParityData = (rawData: RawParityRecord[], baseExchange: string = 'binance'): ParityDashboardData => {
+  const tokens = rawData.map(record => processParityRecord(record, baseExchange));
+  const coverageOverview = calculateCoverageOverview(tokens, baseExchange);
 
   return {
     coverageOverview,
@@ -157,7 +182,7 @@ export const processParityData = (rawData: RawParityRecord[]): ParityDashboardDa
   };
 };
 
-// Filter tokens based on exchange selection and search
+// Filter tokens based on exchange selection and search (legacy)
 export const filterTokens = (
   tokens: ProcessedParityRecord[],
   selectedExchanges: string[],
@@ -192,5 +217,53 @@ export const filterTokens = (
     });
 
     return missingFromSelected;
+  });
+};
+
+// Filter tokens based on primary vs compare exchange analysis
+export const filterTokensByComparison = (
+  tokens: ProcessedParityRecord[],
+  primaryExchange: string,
+  compareExchanges: string[],
+  searchQuery: string
+): ProcessedParityRecord[] => {
+  return tokens.filter(token => {
+    // Search filter
+    if (searchQuery && searchQuery.trim() !== '') {
+      const query = searchQuery.toLowerCase();
+      const matchesName = token.name.toLowerCase().includes(query);
+      const matchesSymbol = token.symbol.toLowerCase().includes(query);
+      if (!matchesName && !matchesSymbol) return false;
+    }
+
+    // If no compare exchanges selected, show all tokens
+    if (compareExchanges.length === 0) return true;
+
+    // Get exchange availability function
+    const isOnExchange = (exchange: string) => {
+      switch (exchange.toLowerCase()) {
+        case 'binance': return token.exchanges.binance;
+        case 'coinbase': return token.exchanges.coinbase;
+        case 'kraken': return token.exchanges.kraken;
+        case 'okx': return token.exchanges.okx;
+        case 'bybit': return token.exchanges.bybit;
+        case 'kucoin': return token.exchanges.kucoin;
+        case 'huobi': return token.exchanges.huobi;
+        case 'gate.io': return token.exchanges.gate;
+        case 'mexc': return token.exchanges.mexc;
+        default: return false;
+      }
+    };
+
+    // Check if token is on primary exchange
+    const onPrimary = isOnExchange(primaryExchange);
+    
+    // Check if token is on any compare exchanges
+    const onAnyCompare = compareExchanges.some(exchange => isOnExchange(exchange));
+    
+    // Show tokens where there's a difference:
+    // 1. Missing from primary but available on compare exchanges (listing opportunities)
+    // 2. Available on primary but missing from some compare exchanges (coverage gaps)
+    return (onAnyCompare && !onPrimary) || (onPrimary && !compareExchanges.every(exchange => isOnExchange(exchange)));
   });
 };
