@@ -60,6 +60,10 @@ model User {
   // Plan selection
   planType               String? // "free" or "pro"
   planSelectedAt         DateTime?
+  
+  // User preferences
+  baseExchange           String? @default("binance")
+  preferences            Json?   // For future extensibility
 
   accounts      Account[]
   sessions      Session[]
@@ -97,4 +101,69 @@ model Subscription {
   updatedAt DateTime @updatedAt
 
   @@map("subscriptions")
+}
+
+// Funding tracking models
+model FundingSnapshot {
+  id          String   @id @default(cuid())
+  date        DateTime @db.Date
+  sector      String
+  totalAmount Float    // Amount in dollars (not formatted)
+  dealCount   Int
+  percentage  Float    // Percentage of total funding for that day
+  
+  // Composite index for efficient querying
+  @@unique([date, sector])
+  @@index([sector, date])
+  @@map("funding_snapshots")
+  
+  createdAt DateTime @default(now())
+}
+
+model FundingTrend {
+  id                String   @id @default(cuid())
+  sector            String   @unique
+  currentAmount     Float    // Current period total
+  previousAmount    Float    // Previous period total for comparison
+  trendPercentage   Float    // Percentage change ((current - previous) / previous) * 100
+  trendDirection    String   // 'up', 'down', 'neutral'
+  periodDays        Int      // Number of days in comparison period (7, 30, 90)
+  lastUpdated       DateTime @default(now())
+  
+  @@map("funding_trends")
+}
+
+// Listings tracking models
+model ListingSnapshot {
+  id            String   @id @default(cuid())
+  date          DateTime @db.Date
+  ticker        String
+  symbol        String
+  name          String
+  exchanges     String[] // Array of exchange names
+  exchangeCount Int
+  price         Float?
+  marketCap     Float?
+  volume24h     Float?
+  scrapedAt     DateTime
+  
+  // Composite index for efficient querying
+  @@unique([date, ticker])
+  @@index([ticker, date])
+  @@map("listing_snapshots")
+  
+  createdAt DateTime @default(now())
+}
+
+model ListingTrend {
+  id                String   @id @default(cuid())
+  ticker            String   @unique
+  currentExchanges  Int      // Current period exchange count
+  previousExchanges Int      // Previous period exchange count  
+  trendPercentage   Float    // Percentage change
+  trendDirection    String   // 'up', 'down', 'neutral'
+  periodDays        Int      // 30, 90, or YTD days
+  lastUpdated       DateTime @default(now())
+  
+  @@map("listing_trends")
 }

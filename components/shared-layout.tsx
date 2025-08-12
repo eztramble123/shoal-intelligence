@@ -14,7 +14,6 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
   const { data: session } = useSession();
-  const [searchTerm, setSearchTerm] = useState('');
   const [showUserMenu, setShowUserMenu] = useState(false);
 
   const navigate = (page: string) => {
@@ -109,7 +108,7 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
               }
             }}
             >
-              <Image src={item.icon} alt={item.label} width={20} height={20} />
+              <Image src={item.icon} alt={item.label} width={16} height={16} />
             </div>
           ))}
         </div>
@@ -126,35 +125,14 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
             justifyContent: 'space-between',
             padding: '0 30px'
           }}>
+            {/* App Title */}
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: '#1a1b23',
-              borderRadius: '8px',
-              padding: '8px 16px',
-              width: '400px',
-              border: '1px solid #2a2b35',
-              transition: 'border 0.3s ease'
+              fontSize: '20px',
+              fontWeight: '600',
+              color: '#ffffff',
+              letterSpacing: '-0.5px'
             }}>
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <circle cx="11" cy="11" r="8"></circle>
-                <path d="m21 21-4.35-4.35"></path>
-              </svg>
-              <input 
-                type="text" 
-                placeholder="Explore tokens, trends, or listing gaps..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                style={{
-                  background: 'none',
-                  border: 'none',
-                  color: '#e4e4e7',
-                  outline: 'none',
-                  marginLeft: '10px',
-                  width: '100%',
-                  fontSize: '14px'
-                }}
-              />
+              Shoal Intelligence
             </div>
             
             {/* User Menu */}
@@ -204,6 +182,28 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
                     zIndex: 50
                   }}>
                     <div style={{ padding: '8px 0' }}>
+                      <div 
+                        onClick={() => {
+                          setShowUserMenu(false);
+                          router.push('/profile');
+                        }}
+                        style={{
+                          padding: '8px 16px',
+                          color: '#e4e4e7',
+                          fontSize: '14px',
+                          cursor: 'pointer',
+                          transition: 'background 0.3s ease'
+                        }}
+                        onMouseEnter={(e) => e.currentTarget.style.background = '#2a2b35'}
+                        onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
+                      >
+                        Profile & Settings
+                      </div>
+                      <div style={{ 
+                        height: '1px', 
+                        background: '#2a2b35', 
+                        margin: '4px 0' 
+                      }} />
                       <div 
                         onClick={() => {
                           setShowUserMenu(false);

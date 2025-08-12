@@ -80,4 +80,5 @@ export interface ParityDashboardData {
   coverageOverview: CoverageOverview;
   tokens: ProcessedParityRecord[];
   totalRecords: number;
+  baseExchange?: string;
 }

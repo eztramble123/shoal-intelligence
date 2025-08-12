@@ -123,29 +123,37 @@ export const TableSkeleton: React.FC<{ rows?: number; columns?: number }> = ({ r
 );
 
 // Chart skeleton
-export const ChartSkeleton: React.FC<{ height?: string }> = ({ height = '200px' }) => (
-  <div style={{
-    background: '#13141a',
-    borderRadius: '8px',
-    padding: '16px',
-    border: '1px solid #2a2b35',
-    height
-  }}>
-    <Skeleton height="16px" width="40%" style={{ marginBottom: '16px' }} />
+export const ChartSkeleton: React.FC<{ height?: string }> = ({ height = '200px' }) => {
+  // Predefined heights to avoid hydration mismatch from Math.random()
+  const barHeights = [
+    '45%', '78%', '32%', '65%', '89%', '23%', 
+    '56%', '71%', '34%', '82%', '47%', '59%'
+  ];
+
+  return (
     <div style={{
-      display: 'flex',
-      alignItems: 'end',
-      gap: '4px',
-      height: '80%'
+      background: '#13141a',
+      borderRadius: '8px',
+      padding: '16px',
+      border: '1px solid #2a2b35',
+      height
     }}>
-      {Array.from({ length: 12 }).map((_, i) => (
-        <Skeleton 
-          key={i} 
-          width="100%" 
-          height={`${Math.random() * 60 + 20}%`} 
-          borderRadius="2px"
-        />
-      ))}
+      <Skeleton height="16px" width="40%" style={{ marginBottom: '16px' }} />
+      <div style={{
+        display: 'flex',
+        alignItems: 'end',
+        gap: '4px',
+        height: '80%'
+      }}>
+        {barHeights.map((barHeight, i) => (
+          <Skeleton 
+            key={i} 
+            width="100%" 
+            height={barHeight} 
+            borderRadius="2px"
+          />
+        ))}
+      </div>
     </div>
-  </div>
-);
+  );
+};

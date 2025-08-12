@@ -138,7 +138,163 @@ export const processListingRecord = (raw: RawListingRecord): ProcessedListingRec
   };
 };
 
-// Process listings data with Retool-style deduplication
+// Filter listings by time period based on first listing date
+export const filterNewListings = (listings: ProcessedListingRecord[], days: number): ProcessedListingRecord[] => {
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+  
+  return listings.filter(listing => {
+    // Only include if first seen within the time period
+    return listing.scrapedAt >= cutoffDate;
+  });
+};
+
+// Calculate listing trends (30/90/YTD comparisons)
+export const calculateListingTrends = async (periodDays: number): Promise<Record<string, {
+  trendPercentage: number;
+  trendDirection: 'up' | 'down' | 'neutral';
+  trendDisplay: string;
+  previousExchangeCount: number;
+}>> => {
+  try {
+    const { PrismaClient } = await import('@prisma/client');
+    const prisma = new PrismaClient();
+    
+    console.log(`=== CALCULATING ${periodDays}-DAY LISTING TRENDS ===`);
+    
+    // Get current period (last N days)
+    const today = new Date();
+    today.setHours(23, 59, 59, 999); // End of today
+    
+    const currentPeriodStart = new Date(today);
+    currentPeriodStart.setDate(currentPeriodStart.getDate() - periodDays);
+    currentPeriodStart.setHours(0, 0, 0, 0);
+    
+    // Get previous period (N days before current period)
+    const previousPeriodEnd = new Date(currentPeriodStart);
+    previousPeriodEnd.setMilliseconds(previousPeriodEnd.getMilliseconds() - 1);
+    
+    const previousPeriodStart = new Date(previousPeriodEnd);
+    previousPeriodStart.setDate(previousPeriodStart.getDate() - periodDays);
+    previousPeriodStart.setHours(0, 0, 0, 0);
+    
+    console.log('Current period:', currentPeriodStart.toISOString().split('T')[0], 'to', today.toISOString().split('T')[0]);
+    console.log('Previous period:', previousPeriodStart.toISOString().split('T')[0], 'to', previousPeriodEnd.toISOString().split('T')[0]);
+    
+    // Get current period data - use latest snapshot per ticker within period
+    const currentPeriodData = await prisma.listingSnapshot.groupBy({
+      by: ['ticker'],
+      where: {
+        date: {
+          gte: currentPeriodStart,
+          lte: today
+        }
+      },
+      _max: {
+        exchangeCount: true,
+        date: true
+      }
+    });
+    
+    // Get previous period data - use latest snapshot per ticker within period
+    const previousPeriodData = await prisma.listingSnapshot.groupBy({
+      by: ['ticker'],
+      where: {
+        date: {
+          gte: previousPeriodStart,
+          lte: previousPeriodEnd
+        }
+      },
+      _max: {
+        exchangeCount: true,
+        date: true
+      }
+    });
+    
+    console.log(`Found ${currentPeriodData.length} tickers in current period, ${previousPeriodData.length} in previous period`);
+    
+    // Create lookup maps
+    const currentMap = new Map(currentPeriodData.map(item => [item.ticker, item._max.exchangeCount || 0]));
+    const previousMap = new Map(previousPeriodData.map(item => [item.ticker, item._max.exchangeCount || 0]));
+    
+    // Calculate trends for all tickers
+    const allTickers = new Set([...currentMap.keys(), ...previousMap.keys()]);
+    
+    const trends: Record<string, {
+      trendPercentage: number;
+      trendDirection: 'up' | 'down' | 'neutral';
+      trendDisplay: string;
+      previousExchangeCount: number;
+    }> = {};
+    
+    for (const ticker of allTickers) {
+      const currentCount = currentMap.get(ticker) || 0;
+      const previousCount = previousMap.get(ticker) || 0;
+      
+      let trendPercentage = 0;
+      let trendDirection: 'up' | 'down' | 'neutral' = 'neutral';
+      
+      if (previousCount > 0) {
+        trendPercentage = ((currentCount - previousCount) / previousCount) * 100;
+      } else if (currentCount > 0) {
+        trendPercentage = 100; // New listing where there was none
+      }
+      
+      // Determine direction with 10% threshold for neutral
+      if (Math.abs(trendPercentage) < 10) {
+        trendDirection = 'neutral';
+      } else {
+        trendDirection = trendPercentage > 0 ? 'up' : 'down';
+      }
+      
+      const trendDisplay = trendPercentage > 0 ? 
+        `+${trendPercentage.toFixed(1)}%` : 
+        `${trendPercentage.toFixed(1)}%`;
+      
+      trends[ticker] = {
+        trendPercentage,
+        trendDirection,
+        trendDisplay,
+        previousExchangeCount: previousCount
+      };
+      
+      console.log(`${ticker}: ${trendDisplay} (${trendDirection}) - Current: ${currentCount} exchanges, Previous: ${previousCount} exchanges`);
+    }
+    
+    await prisma.$disconnect();
+    return trends;
+    
+  } catch (error) {
+    console.error('Listing trend calculation error:', error);
+    // Return empty trends as fallback
+    return {};
+  }
+};
+
+// Generate time-period specific metrics
+export const generatePeriodMetrics = (listings: ProcessedListingRecord[]): {
+  totalNewListings: number;
+  avgExchangesPerListing: number;
+  topNewListings: ProcessedListingRecord[];
+} => {
+  const totalNewListings = listings.length;
+  const avgExchangesPerListing = listings.length > 0 
+    ? listings.reduce((sum, listing) => sum + listing.exchangesCount, 0) / listings.length 
+    : 0;
+  
+  // Get top listings sorted by exchange count
+  const topNewListings = listings
+    .sort((a, b) => b.exchangesCount - a.exchangesCount)
+    .slice(0, 10);
+  
+  return {
+    totalNewListings,
+    avgExchangesPerListing,
+    topNewListings
+  };
+};
+
+// Process listings data with Retool-style deduplication and time-based analysis
 export const processListingsData = (rawData: RawListingRecord[]): ListingsDashboardData => {
   // Retool-style deduplication logic
   const seen: Record<string, boolean> = {};
@@ -200,6 +356,12 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
 
   // Calculate metrics
   const totalNewListings = result.length;
+  
+  // Filter for last 24 hours
+  const twentyFourHoursAgo = new Date();
+  twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+  const last24HourListings = result.filter(token => token.scrapedAt >= twentyFourHoursAgo);
+  const totalNewListings24h = last24HourListings.length;
   const mostListedAsset = sortedByExchanges[0];
   const avgListingsPerAsset = result.reduce((sum, token) => sum + token.exchangesCount, 0) / result.length;
   const uniqueExchanges = new Set(result.flatMap(token => token.exchanges));
@@ -228,10 +390,15 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
     .slice(0, 4)
     .map(([name, count]) => ({ name, count, status: 'new' as const }));
 
-  // Fastest growing tokens
-  const fastestGrowing = result
-    .filter(token => token.priceChangePct24h !== null)
-    .sort((a, b) => (b.priceChangePct24h || 0) - (a.priceChangePct24h || 0))
+  // Fastest growing tokens (most recent listings with most exchanges)
+  const fastestGrowing = last24HourListings
+    .sort((a, b) => {
+      // First sort by exchange count (descending), then by recency (descending)
+      if (b.exchangesCount !== a.exchangesCount) {
+        return b.exchangesCount - a.exchangesCount;
+      }
+      return b.scrapedAt.getTime() - a.scrapedAt.getTime();
+    })
     .slice(0, 4)
     .map(token => ({
       symbol: token.ticker,
@@ -249,6 +416,20 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
       time: `${Math.floor((Date.now() - token.scrapedAt.getTime()) / (1000 * 60))}m ago`
     }));
 
+  // Generate time-based period data
+  const last30DayListings = filterNewListings(result, 30);
+  const last90DayListings = filterNewListings(result, 90);
+  
+  // Calculate YTD (from January 1st to now)
+  const yearStart = new Date();
+  yearStart.setMonth(0, 1); // January 1st
+  yearStart.setHours(0, 0, 0, 0);
+  const ytdListings = result.filter(listing => listing.scrapedAt >= yearStart);
+  
+  const last30DaysData = generatePeriodMetrics(last30DayListings);
+  const last90DaysData = generatePeriodMetrics(last90DayListings);
+  const yearToDateData = generatePeriodMetrics(ytdListings);
+
   return {
     processedListings: result,
     treemapData,
@@ -258,6 +439,25 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
     exchangeActivity,
     fastestGrowing,
     newestListings,
-    totalRecords: result.length
+    totalRecords: result.length,
+    last24Hours: {
+      totalListings: totalNewListings24h,
+      listings: last24HourListings
+    },
+    // Time-based period data
+    last30Days: {
+      newListings: last30DayListings,
+      ...last30DaysData
+    },
+    last90Days: {
+      newListings: last90DayListings,
+      ...last90DaysData
+    },
+    yearToDate: {
+      newListings: ytdListings,
+      ...yearToDateData
+    },
+    // Trending listings (initially empty, will be enhanced by API with real trend data)
+    trendingListings: result.slice(0, 10) // Top 10 by exchange count as default
   };
 };

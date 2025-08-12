@@ -4,9 +4,15 @@ import { stripe } from '@/lib/stripe'
 import { prisma } from '@/lib/prisma'
 import Stripe from 'stripe'
 
+interface StripeSubscriptionWithPeriods extends Stripe.Subscription {
+  current_period_start: number;
+  current_period_end: number;
+}
+
 export async function POST(request: Request) {
   const body = await request.text()
-  const signature = headers().get('stripe-signature')!
+  const headersList = await headers()
+  const signature = headersList.get('stripe-signature')!
 
   let event: Stripe.Event
 
@@ -40,7 +46,7 @@ export async function POST(request: Request) {
           data: {
             stripeSubscriptionId: subscription.id,
             stripePriceId: subscription.items.data[0].price.id,
-            stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            stripeCurrentPeriodEnd: new Date((subscription as unknown as StripeSubscriptionWithPeriods).current_period_end * 1000),
           }
         })
 
@@ -50,8 +56,8 @@ export async function POST(request: Request) {
             stripeSubscriptionId: subscription.id,
             stripeCustomerId: session.customer as string,
             stripePriceId: subscription.items.data[0].price.id,
-            stripeCurrentPeriodStart: new Date(subscription.current_period_start * 1000),
-            stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            stripeCurrentPeriodStart: new Date((subscription as unknown as StripeSubscriptionWithPeriods).current_period_start * 1000),
+            stripeCurrentPeriodEnd: new Date((subscription as unknown as StripeSubscriptionWithPeriods).current_period_end * 1000),
             status: subscription.status,
             userId: session.metadata?.userId || '',
           }
@@ -67,7 +73,7 @@ export async function POST(request: Request) {
           where: { stripeCustomerId: subscription.customer as string },
           data: {
             stripePriceId: subscription.items.data[0].price.id,
-            stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            stripeCurrentPeriodEnd: new Date((subscription as unknown as StripeSubscriptionWithPeriods).current_period_end * 1000),
           }
         })
 
@@ -76,8 +82,8 @@ export async function POST(request: Request) {
           where: { stripeSubscriptionId: subscription.id },
           data: {
             stripePriceId: subscription.items.data[0].price.id,
-            stripeCurrentPeriodStart: new Date(subscription.current_period_start * 1000),
-            stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            stripeCurrentPeriodStart: new Date((subscription as unknown as StripeSubscriptionWithPeriods).current_period_start * 1000),
+            stripeCurrentPeriodEnd: new Date((subscription as unknown as StripeSubscriptionWithPeriods).current_period_end * 1000),
             status: subscription.status,
           }
         })
@@ -111,9 +117,9 @@ export async function POST(request: Request) {
         const invoice = event.data.object as Stripe.Invoice
         
         // Update subscription status
-        if (invoice.subscription) {
+        if ((invoice as unknown as { subscription?: string }).subscription) {
           await prisma.subscription.update({
-            where: { stripeSubscriptionId: invoice.subscription as string },
+            where: { stripeSubscriptionId: (invoice as unknown as { subscription: string }).subscription },
             data: {
               status: 'past_due',
             }

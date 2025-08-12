@@ -49,6 +49,11 @@ export interface CategoryMetrics {
   percentage: number;
   dealCount: number;
   color: string;
+  // Trend data
+  previousAmount?: number;
+  trendPercentage?: number;
+  trendDirection?: 'up' | 'down' | 'neutral';
+  trendDisplay?: string; // Formatted like "+15.3%" or "-8.7%"
 }
 
 export interface MonthlyFunding {
@@ -65,10 +70,13 @@ export interface FundingDashboardData {
   avgRoundSizeNum: number;
   mostActiveInvestors: InvestorMetrics[];
   trendingCategories: CategoryMetrics[];
+  last90DaysCategories: CategoryMetrics[];
   latestRounds: ProcessedFundingRecord[];
   monthlyFunding: MonthlyFunding[];
   last30Days: {
     totalRaised: string;
     dealCount: number;
+    avgRoundSize: string;
+    avgRoundSizeNum: number;
   };
 }
