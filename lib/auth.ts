@@ -14,7 +14,7 @@ export const authOptions: NextAuthOptions = {
     })
   ],
   callbacks: {
-    async signIn({ user, account, profile }) {
+    async signIn() {
       // Allow sign in
       return true
     },
@@ -26,7 +26,7 @@ export const authOptions: NextAuthOptions = {
           session.user.id = user.id
         }
         // When using JWT sessions
-        else if (token) {
+        else if (token?.sub) {
           session.user.id = token.sub
         }
       }
