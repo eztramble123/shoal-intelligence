@@ -1,0 +1,246 @@
+/* Exchange Comparison Component Styles - Compact Version */
+.container {
+  background: #1A1B1E;
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid #212228;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0 0 4px 0;
+}
+
+.subtitle {
+  font-size: 12px;
+  color: #9ca3af;
+  margin: 0 0 16px 0;
+}
+
+.dropdownControls {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+  align-items: center;
+}
+
+.dropdownWrapper {
+  position: relative;
+  flex: 1;
+}
+
+.dropdownButton {
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px solid;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.2s ease;
+  background: transparent;
+}
+
+.dropdownButton:hover {
+  background: var(--hover-bg);
+}
+
+.dropdownButton.active {
+  background: var(--active-bg);
+}
+
+.primaryButton {
+  --hover-bg: rgba(16, 185, 129, 0.2);
+  --active-bg: rgba(16, 185, 129, 0.15);
+  border-color: #10b981;
+}
+
+.compareButton {
+  --hover-bg: rgba(72, 105, 239, 0.2);
+  --active-bg: rgba(72, 105, 239, 0.15);
+  border-color: #4869EF;
+}
+
+.dropdownIcon {
+  transition: transform 0.2s ease;
+}
+
+.dropdownIcon.open {
+  transform: rotate(180deg);
+}
+
+.dropdownContent {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  background: #1A1B1E;
+  border: 1px solid #212228;
+  border-radius: 8px;
+  margin-top: 4px;
+  z-index: 1000;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.searchWrapper {
+  padding: 12px;
+  border-bottom: 1px solid #212228;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 8px 12px;
+  background: #13141a;
+  border: 1px solid #212228;
+  border-radius: 6px;
+  color: #ffffff;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.searchInput:focus {
+  border-color: var(--focus-color);
+}
+
+.primarySearch:focus {
+  --focus-color: #10b981;
+}
+
+.compareSearch:focus {
+  --focus-color: #4869EF;
+}
+
+.exchangeList {
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.exchangeItem {
+  padding: 10px 12px;
+  cursor: pointer;
+  border-bottom: 1px solid #212228;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.exchangeItem:hover {
+  background: var(--hover-bg);
+  border-radius: 6px;
+}
+
+.exchangeItem.disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.exchangeItem.disabled:hover {
+  background: transparent;
+  border-radius: 0;
+}
+
+.exchangeItemContent {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.hamburgerIcon {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  opacity: 0.5;
+}
+
+.hamburgerLine {
+  width: 12px;
+  height: 2px;
+  background: #9ca3af;
+  border-radius: 1px;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #4869EF;
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.checkbox.checked {
+  background: #4869EF;
+}
+
+.checkmark {
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 600;
+}
+
+.exchangeName {
+  color: #ffffff;
+  font-size: 14px;
+}
+
+.selectedIndicator {
+  color: #10b981;
+  font-size: 14px;
+}
+
+.resetButton {
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid #374151;
+  border-radius: 6px;
+  color: #9ca3af;
+  font-size: 12px;
+  font-weight: 400;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.resetButton:hover {
+  border-color: #ffffff;
+  color: #ffffff;
+}
+
+.statusMessage {
+  margin-bottom: 10px;
+}
+
+.statusMessage p {
+  font-size: 11px;
+  margin: 0;
+}
+
+.warningMessage {
+  color: #f97316;
+}
+
+.infoMessage {
+  color: #9ca3af;
+}
+
+/* Performance optimizations */
+.primaryHover:hover {
+  background: rgba(16, 185, 129, 0.1);
+  border-radius: 6px;
+}
+
+.compareHover:hover {
+  background: rgba(72, 105, 239, 0.1);
+  border-radius: 6px;
+}

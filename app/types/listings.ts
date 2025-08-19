@@ -30,6 +30,9 @@ export interface RawListingRecord {
   public_notice: string | null;
   last_updated: string;
   scraped_at: string;
+  listingDate: number; // Unix timestamp for actual listing date
+  exchange?: string; // Primary exchange for this listing event
+  type?: string; // Listing type (e.g., "Futures", "Spot")
 }
 
 // Processed listing record with additional computed fields
@@ -55,6 +58,10 @@ export interface ProcessedListingRecord {
   lastUpdatedDisplay: string;
   scrapedAt: Date;
   scrapedAtDisplay: string;
+  listingDate: Date; // Actual listing date from API
+  listingDateDisplay: string; // Formatted listing date for display
+  primaryExchange?: string; // Primary exchange for this listing event
+  listingType?: string; // Listing type (e.g., "Futures", "Spot")
   platforms: Record<string, string>;
   momentum: 'VERY HIGH' | 'HIGH' | 'MEDIUM' | 'LOW' | 'GROWING' | 'DECLINING';
   momentumColor: string;
@@ -132,6 +139,7 @@ export interface ListingsDashboardData {
     symbol: string;
     exchanges: string;
     status: 'up' | 'down' | 'stable';
+    timeframe?: string;
   }[];
   newestListings: {
     symbol: string;
