@@ -14,6 +14,12 @@ const RecentListingsTrackerFeed = () => {
   const [listingsData, setListingsData] = useState<ListingsDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isClient, setIsClient] = useState(false);
+
+  // Ensure we're on the client side for time calculations
+  useEffect(() => {
+    setIsClient(true);
+  }, []);
 
   // Fetch listings data
   const fetchListingsData = useCallback(async () => {
@@ -86,47 +92,101 @@ const RecentListingsTrackerFeed = () => {
     // Use period-specific listings for all displays
     const periodListings = periodData.newListings || [];
     
-    // Generate token cards from period-specific listings
-    const tokenCards = periodListings
-      .sort((a, b) => b.exchangesCount - a.exchangesCount)
-      .slice(0, 8)
-      .map(token => ({
-        symbol: token.ticker,
-        name: token.name,
-        exchanges: token.exchanges,
-        exchangeCount: token.exchangesCount,
-        adoption24h: token.trendDisplay || 'NEW',
-        momentum: token.momentum,
-        momentumColor: token.momentumColor,
-        listedOn: token.exchangesDisplay,
-        lastUpdated: token.lastUpdatedDisplay,
-        priceChange: token.priceChangePct24h,
-        volume: token.volume24hDisplay
-      }));
+    // Generate token cards based on actual new exchange listings in the selected period
+    // Calculate period start date
+    const periodStartDate = new Date();
+    if (selectedPeriod === 'ytd') {
+      periodStartDate.setMonth(0, 1); // January 1st
+      periodStartDate.setHours(0, 0, 0, 0);
+    } else {
+      const days = parseInt(selectedPeriod.replace('d', ''));
+      periodStartDate.setDate(periodStartDate.getDate() - days);
+    }
     
-    // Generate treemap data from period-specific listings
-    const treemapData = periodListings
-      .sort((a, b) => b.exchangesCount - a.exchangesCount)
-      .slice(0, 20)
-      .map(token => ({
-        name: token.ticker,
-        value: token.exchangesCount,
-        size: token.exchangesCount * 10,
-        fill: token.momentumColor,
-        changeType: token.priceChangePct24h && token.priceChangePct24h > 0 ? 'positive' as const : 
-                    token.priceChangePct24h && token.priceChangePct24h < 0 ? 'negative' as const : 'neutral' as const,
-        chartData: token.chartData,
-        ticker: token.ticker,
-        exchangesCount: token.exchangesCount
-      }));
+    // Filter listings that actually happened in the selected period
+    const recentListings = listingsData?.processedListings?.filter(token => {
+      const listingDate = token.listingDate instanceof Date ? token.listingDate : new Date(token.listingDate);
+      return listingDate >= periodStartDate;
+    }) || [];
+    
+    // Group by token and count unique exchanges for new listings
+    const tokenExchangeActivity: Record<string, {
+      token: typeof recentListings[0];
+      newExchanges: Set<string>;
+      listingEvents: typeof recentListings;
+    }> = {};
+    
+    recentListings.forEach(listing => {
+      if (!tokenExchangeActivity[listing.ticker]) {
+        tokenExchangeActivity[listing.ticker] = {
+          token: listing,
+          newExchanges: new Set(),
+          listingEvents: []
+        };
+      }
+      
+      // Add the primary exchange for this listing event
+      if (listing.primaryExchange) {
+        tokenExchangeActivity[listing.ticker].newExchanges.add(listing.primaryExchange);
+      }
+      tokenExchangeActivity[listing.ticker].listingEvents.push(listing);
+    });
+    
+    // Convert to token cards sorted by most new exchange activity
+    const tokenCards = Object.values(tokenExchangeActivity)
+      .map(item => {
+        const token = item.token;
+        const newExchangeCount = item.newExchanges.size;
+        const newExchangesList = Array.from(item.newExchanges);
+        
+        return {
+          symbol: token.ticker,
+          name: token.name,
+          exchanges: newExchangesList,
+          exchangeCount: newExchangeCount,
+          adoption24h: `+${newExchangeCount} exchange${newExchangeCount !== 1 ? 's' : ''}`,
+          momentum: token.momentum,
+          momentumColor: token.momentumColor,
+          listedOn: newExchangeCount === 1 
+            ? `NEW: ${newExchangesList[0]}`
+            : `NEW: ${newExchangesList.join(', ')}`,
+          lastUpdated: token.listingDateDisplay,
+          priceChange: token.priceChangePct24h,
+          volume: token.volume24hDisplay
+        };
+      })
+      .sort((a, b) => b.exchangeCount - a.exchangeCount)
+      .slice(0, 8);
+    
+    // Generate treemap data based on new exchange activity in the period
+    const treemapData = Object.values(tokenExchangeActivity)
+      .map(item => {
+        const token = item.token;
+        const newExchangeCount = item.newExchanges.size;
+        
+        return {
+          name: token.ticker,
+          value: newExchangeCount,
+          size: newExchangeCount * 10, // Scale for visualization
+          fill: token.momentumColor,
+          changeType: token.priceChangePct24h && token.priceChangePct24h > 0 ? 'positive' as const : 
+                      token.priceChangePct24h && token.priceChangePct24h < 0 ? 'negative' as const : 'neutral' as const,
+          chartData: token.chartData,
+          ticker: token.ticker,
+          exchangesCount: newExchangeCount
+        };
+      })
+      .filter(item => item.value > 0) // Only show tokens with new exchange activity
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 20);
     
     // Calculate exchange activity from last 24 hours only (not period-specific)
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
     
     const last24HourListings = listingsData?.processedListings?.filter(token => {
-      const scrapedDate = token.scrapedAt instanceof Date ? token.scrapedAt : new Date(token.scrapedAt);
-      return scrapedDate >= twentyFourHoursAgo;
+      const listingDate = token.listingDate instanceof Date ? token.listingDate : new Date(token.listingDate);
+      return listingDate >= twentyFourHoursAgo;
     }) || [];
     
     const exchangeCount: Record<string, number> = {};
@@ -152,20 +212,26 @@ const RecentListingsTrackerFeed = () => {
         status: 'up' as const
       }));
     
-    // Newest listings (most recently scraped within period)
+    // Newest listings (most recently listed within period)
     const newestListings = periodListings
       .sort((a, b) => {
-        const dateA = a.scrapedAt instanceof Date ? a.scrapedAt : new Date(a.scrapedAt);
-        const dateB = b.scrapedAt instanceof Date ? b.scrapedAt : new Date(b.scrapedAt);
+        const dateA = a.listingDate instanceof Date ? a.listingDate : new Date(a.listingDate);
+        const dateB = b.listingDate instanceof Date ? b.listingDate : new Date(b.listingDate);
         return dateB.getTime() - dateA.getTime();
       })
       .slice(0, 4)
       .map(token => {
-        const scrapedDate = token.scrapedAt instanceof Date ? token.scrapedAt : new Date(token.scrapedAt);
+        const listingDate = token.listingDate instanceof Date ? token.listingDate : new Date(token.listingDate);
+        // Only calculate time on client to avoid hydration mismatch
+        const timeDisplay = isClient ? (() => {
+          const hoursAgo = Math.floor((Date.now() - listingDate.getTime()) / (1000 * 60 * 60));
+          return hoursAgo > 0 ? `${hoursAgo}h ago` : 'Just now';
+        })() : 'Recently';
+        
         return {
           symbol: token.ticker,
           exchange: `on ${token.exchanges[0] || 'Unknown'}`,
-          time: `${Math.floor((Date.now() - scrapedDate.getTime()) / (1000 * 60 * 60))}h ago`
+          time: timeDisplay
         };
       });
     
@@ -173,14 +239,17 @@ const RecentListingsTrackerFeed = () => {
     const liveListings = periodListings
       .slice(0, 10)
       .map(token => {
-        const scrapedDate = token.scrapedAt instanceof Date ? token.scrapedAt : new Date(token.scrapedAt);
+        const listingDate = token.listingDate instanceof Date ? token.listingDate : new Date(token.listingDate);
+        // Only format timestamp on client to avoid hydration mismatch
+        const timestamp = isClient ? listingDate.toLocaleTimeString('en-US', { 
+          hour12: false,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit'
+        }) : '--:--:--';
+        
         return {
-          timestamp: scrapedDate.toLocaleTimeString('en-US', { 
-            hour12: false,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit'
-          }),
+          timestamp,
           exchange: token.exchanges[0] || 'Unknown',
           asset: token.ticker,
           name: token.name,
@@ -206,7 +275,12 @@ const RecentListingsTrackerFeed = () => {
   // Generate adoption metrics from period data
   const adoptionMetrics = periodData ? [
     { title: `New Listings (${selectedPeriod.toUpperCase()})`, value: periodData.totalNewListings || 0 },
-    { title: 'Top New Listing', value: periodData.topNewListings?.[0]?.ticker ? `${periodData.topNewListings[0].ticker} (${periodData.topNewListings[0].exchangesCount} exchanges)` : 'N/A' },
+    { 
+      title: 'Top New Listing', 
+      value: periodData.topNewListings?.[0] ? 
+        `${periodData.topNewListings[0].symbol || periodData.topNewListings[0].ticker} (${periodData.topNewListings[0].exchangesCount} exchanges)` : 
+        'N/A' 
+    },
     { title: 'Period Coverage', value: selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}` }
   ] : [
     { title: `New Listings (${selectedPeriod.toUpperCase()})`, value: '—' },
@@ -564,11 +638,16 @@ const RecentListingsTrackerFeed = () => {
           {/* Time Period Selector */}
           <div style={{
             display: 'flex',
-            background: '#1A1B1E',
-            borderRadius: '8px',
-            border: '1px solid #212228',
-            padding: '4px'
+            flexDirection: 'column',
+            gap: '8px'
           }}>
+            <div style={{
+              display: 'flex',
+              background: '#1A1B1E',
+              borderRadius: '8px',
+              border: '1px solid #212228',
+              padding: '4px'
+            }}>
             {(['30d', '90d', 'ytd'] as const).map((period) => {
               const isSelected = selectedPeriod === period;
               const periodLabels = {
@@ -628,6 +707,16 @@ const RecentListingsTrackerFeed = () => {
                 </button>
               );
             })}
+            </div>
+            <p style={{
+              fontSize: '11px',
+              color: '#6b7280',
+              fontStyle: 'italic',
+              margin: '0',
+              paddingLeft: '8px'
+            }}>
+              * Based on actual listing dates from exchanges
+            </p>
           </div>
         </div>
 
@@ -637,7 +726,7 @@ const RecentListingsTrackerFeed = () => {
             Adoption Map ({selectedPeriod.toUpperCase()})
           </h2>
           <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-            New Assets by Exchange Listings - {selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}`}
+            Tokens with Most New Exchange Listings - {selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}`}
           </p>
 
           {/* Token Cards Grid */}
@@ -685,7 +774,7 @@ const RecentListingsTrackerFeed = () => {
                   </div>
                   <div style={{ marginBottom: '12px' }}>
                     <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>
-                      Listed on:
+                      New listings:
                     </p>
                     <div 
                       style={{ position: 'relative' }}
@@ -814,7 +903,7 @@ const RecentListingsTrackerFeed = () => {
                   </div>
                   <div style={{ marginBottom: '12px' }}>
                     <p style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>
-                      Listed on:
+                      New listings:
                     </p>
                     <div 
                       style={{ position: 'relative' }}

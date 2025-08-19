@@ -268,14 +268,20 @@ const VentureIntelligenceDashboard = () => {
   ];
 
   const trendingCategories: TrendingCategory[] = fundingData ?
-    fundingData.trendingCategories.slice(0, 5).map((cat, idx) => ({
-      rank: idx + 1,
-      name: cat.category,
-      amount: cat.totalAmountDisplay,
-      deals: cat.dealCount,
-      change: cat.trendDisplay || '0.0%',
-      changeType: cat.trendDirection || 'neutral' as const
-    })) :
+    fundingData.last90DaysCategories
+      .sort((a, b) => b.totalAmount - a.totalAmount)
+      .slice(0, 5)
+      .map((cat, idx) => ({
+        rank: idx + 1,
+        name: cat.category,
+        amount: cat.totalAmount >= 1e9 ? `$${(cat.totalAmount / 1e9).toFixed(1)}B` :
+                cat.totalAmount >= 1e6 ? `$${(cat.totalAmount / 1e6).toFixed(0)}M` :
+                cat.totalAmount >= 1e3 ? `$${(cat.totalAmount / 1e3).toFixed(0)}K` :
+                `$${cat.totalAmount.toFixed(0)}`,
+        deals: cat.dealCount,
+        change: '0.0%', // No trend data for 90-day categories
+        changeType: 'neutral' as const
+      })) :
     [
       { rank: 1, name: 'Loading...', amount: '$0', deals: 0, change: '+0.0%', changeType: 'up' },
     ];
@@ -693,7 +699,7 @@ const VentureIntelligenceDashboard = () => {
           {/* Right Column - Trending Categories */}
           <div>
             <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '20px', color: '#ffffff' }}>
-              Trending Categories (7-day)
+              Trending Categories (90-day)
             </h2>
             
             {/* Combined Trending Categories Card */}
@@ -720,7 +726,13 @@ const VentureIntelligenceDashboard = () => {
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Total Capital Deployed:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                      {fundingData?.totalRaised || '$0'}
+                      {fundingData ? (() => {
+                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                        return total90Day >= 1e9 ? `$${(total90Day / 1e9).toFixed(1)}B` :
+                               total90Day >= 1e6 ? `$${(total90Day / 1e6).toFixed(0)}M` :
+                               total90Day >= 1e3 ? `$${(total90Day / 1e3).toFixed(0)}K` :
+                               `$${total90Day.toFixed(0)}`;
+                      })() : '$0'}
                     </span>
                     <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
@@ -729,7 +741,7 @@ const VentureIntelligenceDashboard = () => {
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Total Deals:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                      {fundingData?.activeDeals || 0}
+                      {fundingData ? fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0) : 0}
                     </span>
                     <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
@@ -738,7 +750,15 @@ const VentureIntelligenceDashboard = () => {
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Avg Round Size:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                      {fundingData?.avgRoundSize || '$0'}
+                      {fundingData ? (() => {
+                        const totalDeals90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0);
+                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                        const avgRound90Day = totalDeals90Day > 0 ? total90Day / totalDeals90Day : 0;
+                        return avgRound90Day >= 1e9 ? `$${(avgRound90Day / 1e9).toFixed(1)}B` :
+                               avgRound90Day >= 1e6 ? `$${(avgRound90Day / 1e6).toFixed(0)}M` :
+                               avgRound90Day >= 1e3 ? `$${(avgRound90Day / 1e3).toFixed(0)}K` :
+                               `$${avgRound90Day.toFixed(0)}`;
+                      })() : '$0'}
                     </span>
                     <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>

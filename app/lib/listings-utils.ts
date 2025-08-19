@@ -93,7 +93,8 @@ export const generateSparklineData = (
   let lastValue = baseValue;
   
   for (let i = 0; i < points; i++) {
-    const change = (Math.random() - 0.5) * 8;
+    // Use deterministic change based on index to avoid hydration mismatch
+    const change = ((i * 17 + 23) % 100 - 50) / 10;
     const trendFactor = trend === 'up' ? 0.3 : trend === 'down' ? -0.3 : 0;
     lastValue = Math.max(20, Math.min(80, lastValue + change + trendFactor));
     data.push(lastValue);
@@ -105,6 +106,9 @@ export const generateSparklineData = (
 export const processListingRecord = (raw: RawListingRecord): ProcessedListingRecord => {
   const exchanges = parseExchanges(raw.all_exchanges);
   const { momentum, color } = calculateMomentum(raw.price_change_pct_24h);
+  
+  // Convert Unix timestamp to Date object for listing date
+  const listingDateObj = new Date(raw.listingDate * 1000);
   
   return {
     ticker: raw.ticker,
@@ -128,6 +132,10 @@ export const processListingRecord = (raw: RawListingRecord): ProcessedListingRec
     lastUpdatedDisplay: formatDate(raw.last_updated),
     scrapedAt: new Date(raw.scraped_at),
     scrapedAtDisplay: formatDate(raw.scraped_at),
+    listingDate: listingDateObj,
+    listingDateDisplay: formatDate(listingDateObj),
+    primaryExchange: raw.exchange,
+    listingType: raw.type,
     platforms: raw.platforms,
     momentum,
     momentumColor: color,
@@ -138,14 +146,14 @@ export const processListingRecord = (raw: RawListingRecord): ProcessedListingRec
   };
 };
 
-// Filter listings by time period based on first listing date
+// Filter listings by time period based on actual listing date
 export const filterNewListings = (listings: ProcessedListingRecord[], days: number): ProcessedListingRecord[] => {
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - days);
   
   return listings.filter(listing => {
-    // Only include if first seen within the time period
-    return listing.scrapedAt >= cutoffDate;
+    // Filter by listingDate (when token was actually listed on exchanges)
+    return listing.listingDate >= cutoffDate;
   });
 };
 
@@ -332,8 +340,8 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
     name: token.name,
     exchanges: token.exchanges,
     exchangeCount: token.exchangesCount,
-    adoption24h: token.exchangesCount > 10 ? `+${Math.floor(Math.random() * 3 + 1)} exchanges` : 
-                  token.exchangesCount > 5 ? `+${Math.floor(Math.random() * 2 + 1)} exchanges` : 'NEW',
+    adoption24h: token.exchangesCount > 10 ? `+${Math.floor((token.ticker.charCodeAt(0) % 3) + 1)} exchanges` : 
+                  token.exchangesCount > 5 ? `+${Math.floor((token.ticker.charCodeAt(0) % 2) + 1)} exchanges` : 'NEW',
     momentum: token.momentum,
     momentumColor: token.momentumColor,
     listedOn: token.exchangesDisplay,
@@ -360,7 +368,7 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
   // Filter for last 24 hours
   const twentyFourHoursAgo = new Date();
   twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
-  const last24HourListings = result.filter(token => token.scrapedAt >= twentyFourHoursAgo);
+  const last24HourListings = result.filter(token => token.listingDate >= twentyFourHoursAgo);
   const totalNewListings24h = last24HourListings.length;
   const mostListedAsset = sortedByExchanges[0];
   const avgListingsPerAsset = result.reduce((sum, token) => sum + token.exchangesCount, 0) / result.length;
@@ -390,41 +398,70 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
     .slice(0, 4)
     .map(([name, count]) => ({ name, count, status: 'new' as const }));
 
-  // Fastest growing tokens (most recent listings with most exchanges)
-  const fastestGrowing = last24HourListings
+  // Get listings from different time periods for fallback
+  const last7Days = new Date();
+  last7Days.setDate(last7Days.getDate() - 7);
+  const last7DayListings = result.filter(token => token.listingDate >= last7Days);
+
+  // Generate time-based period data needed for fallback
+  const last30DayListings = filterNewListings(result, 30);
+
+  // Fastest growing tokens with fallback logic
+  let fastestGrowingSource = last24HourListings;
+  let timeframeLabel = '24h';
+
+  // Fallback to 7 days if no 24h listings
+  if (fastestGrowingSource.length === 0) {
+    fastestGrowingSource = last7DayListings;
+    timeframeLabel = '7d';
+  }
+
+  // Fallback to 30 days if no 7d listings
+  if (fastestGrowingSource.length === 0) {
+    fastestGrowingSource = last30DayListings;
+    timeframeLabel = '30d';
+  }
+
+  // Final fallback to all listings if still empty
+  if (fastestGrowingSource.length === 0) {
+    fastestGrowingSource = result;
+    timeframeLabel = 'all';
+  }
+
+  const fastestGrowing = fastestGrowingSource
     .sort((a, b) => {
-      // First sort by exchange count (descending), then by recency (descending)
+      // First sort by exchange count (descending), then by listing date (descending)
       if (b.exchangesCount !== a.exchangesCount) {
         return b.exchangesCount - a.exchangesCount;
       }
-      return b.scrapedAt.getTime() - a.scrapedAt.getTime();
+      return b.listingDate.getTime() - a.listingDate.getTime();
     })
     .slice(0, 4)
     .map(token => ({
       symbol: token.ticker,
       exchanges: `+${token.exchangesCount} exchanges`,
-      status: 'up' as const
+      status: 'up' as const,
+      timeframe: timeframeLabel
     }));
 
-  // Newest listings
+  // Newest listings (sorted by actual listing date)
   const newestListings = result
-    .sort((a, b) => b.scrapedAt.getTime() - a.scrapedAt.getTime())
+    .sort((a, b) => b.listingDate.getTime() - a.listingDate.getTime())
     .slice(0, 4)
     .map(token => ({
       symbol: token.ticker,
       exchange: `on ${token.exchanges[0] || 'Unknown'}`,
-      time: `${Math.floor((Date.now() - token.scrapedAt.getTime()) / (1000 * 60))}m ago`
+      time: `${Math.floor((new Date().getTime() - token.listingDate.getTime()) / (1000 * 60))}m ago`
     }));
 
   // Generate time-based period data
-  const last30DayListings = filterNewListings(result, 30);
   const last90DayListings = filterNewListings(result, 90);
   
   // Calculate YTD (from January 1st to now)
   const yearStart = new Date();
   yearStart.setMonth(0, 1); // January 1st
   yearStart.setHours(0, 0, 0, 0);
-  const ytdListings = result.filter(listing => listing.scrapedAt >= yearStart);
+  const ytdListings = result.filter(listing => listing.listingDate >= yearStart);
   
   const last30DaysData = generatePeriodMetrics(last30DayListings);
   const last90DaysData = generatePeriodMetrics(last90DayListings);

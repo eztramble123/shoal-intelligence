@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { Check, X, Minus, TrendingUp, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
@@ -8,6 +8,7 @@ import { SharedLayout } from '@/components/shared-layout';
 import { ParityDashboardData, ProcessedParityRecord } from '@/app/types/parity';
 import { filterTokensByComparison } from '@/app/lib/parity-utils';
 import { CardSkeleton, StatsGridSkeleton, TableSkeleton, Skeleton } from '@/components/skeleton';
+import styles from './ExchangeComparison.module.css';
 
 const TokenListingDashboard = () => {
   const router = useRouter();
@@ -17,15 +18,25 @@ const TokenListingDashboard = () => {
   const [parityData, setParityData] = useState<ParityDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [searchQuery] = useState('');
-  const [primaryExchange, setPrimaryExchange] = useState<string>('Binance');
+  const [primaryExchange, setPrimaryExchange] = useState<string>('');
   const [compareExchanges, setCompareExchanges] = useState<string[]>([]);
   const [sortColumn, setSortColumn] = useState<string | null>('marketCap');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
-  const [selectionStep, setSelectionStep] = useState<'primary' | 'compare' | 'complete'>('complete'); // Start complete since we have default
+  
+  // Dropdown states
+  const [primaryDropdownOpen, setPrimaryDropdownOpen] = useState(false);
+  const [compareDropdownOpen, setCompareDropdownOpen] = useState(false);
+  const [primarySearchTerm, setPrimarySearchTerm] = useState('');
+  const [compareSearchTerm, setCompareSearchTerm] = useState('');
+  
+  // Debounced search terms for better performance
+  const [debouncedPrimarySearch, setDebouncedPrimarySearch] = useState('');
+  const [debouncedCompareSearch, setDebouncedCompareSearch] = useState('');
   
   const exchanges = [
     'Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'KuCoin', 'Huobi', 'Gate.io', 'MEXC'
   ];
+
 
   // Check authentication
   useEffect(() => {
@@ -35,6 +46,21 @@ const TokenListingDashboard = () => {
     }
   }, [session, status, router]);
 
+  // Debouncing effect for search terms
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedPrimarySearch(primarySearchTerm);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [primarySearchTerm]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedCompareSearch(compareSearchTerm);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [compareSearchTerm]);
+
   // Fetch parity data
   useEffect(() => {
     const fetchParityData = async () => {
@@ -42,6 +68,8 @@ const TokenListingDashboard = () => {
         const response = await fetch('/api/parity');
         const data = await response.json();
         setParityData(data);
+        // Set primary exchange from API data, fallback to 'Binance' if not provided
+        setPrimaryExchange(data.baseExchange || 'Binance');
       } catch (error) {
         console.error('Error fetching parity data:', error);
       } finally {
@@ -52,8 +80,8 @@ const TokenListingDashboard = () => {
     fetchParityData();
   }, []);
 
-  // Sort function for tokens
-  const sortTokens = (tokens: ProcessedParityRecord[], column: string | null, direction: 'asc' | 'desc') => {
+  // Memoized sort function for tokens
+  const sortTokens = useCallback((tokens: ProcessedParityRecord[], column: string | null, direction: 'asc' | 'desc') => {
     if (!column) return tokens;
     
     return [...tokens].sort((a, b) => {
@@ -88,7 +116,7 @@ const TokenListingDashboard = () => {
       
       return direction === 'asc' ? (aVal as number) - (bVal as number) : (bVal as number) - (aVal as number);
     });
-  };
+  }, []);
   
   // Helper function to parse market cap display values
   const parseMarketCapValue = (displayValue: string): number => {
@@ -115,13 +143,17 @@ const TokenListingDashboard = () => {
     }
   };
   
-  // Filter and sort tokens using new comparison model
-  const baseFilteredTokens = parityData ? filterTokensByComparison(parityData.tokens, primaryExchange, compareExchanges, searchQuery) : [];
-  const filteredTokens = sortTokens(baseFilteredTokens, sortColumn, sortDirection);
+  // Memoized filter and sort tokens using new comparison model
+  const baseFilteredTokens = useMemo(() => {
+    return parityData ? filterTokensByComparison(parityData.tokens, primaryExchange, compareExchanges, searchQuery) : [];
+  }, [parityData, primaryExchange, compareExchanges, searchQuery]);
+
+  const filteredTokens = useMemo(() => {
+    return sortTokens(baseFilteredTokens, sortColumn, sortDirection);
+  }, [baseFilteredTokens, sortColumn, sortDirection, sortTokens]);
   
-  
-  // Calculate coverage overview for filtered tokens
-  const getCoverageOverviewForFiltered = () => {
+  // Memoized coverage overview calculation for filtered tokens
+  const displayedCoverageOverview = useMemo(() => {
     if (!parityData || filteredTokens.length === 0) {
       return parityData?.coverageOverview;
     }
@@ -147,9 +179,7 @@ const TokenListingDashboard = () => {
       coverageRate,
       topMissingExchanges: parityData.coverageOverview.topMissingExchanges
     };
-  };
-
-  const displayedCoverageOverview = getCoverageOverviewForFiltered();
+  }, [parityData, filteredTokens, compareExchanges]);
   
   // Pagination
   const totalFilteredTokens = filteredTokens.length;
@@ -157,14 +187,14 @@ const TokenListingDashboard = () => {
   const endIndex = startIndex + rowsPerPage;
   const paginatedTokens = filteredTokens.slice(startIndex, endIndex);
 
-  // Step-based selection handlers
-  const handlePrimarySelection = (exchange: string) => {
+  // Memoized selection handlers to prevent re-renders
+  const handlePrimarySelection = useCallback((exchange: string) => {
     setPrimaryExchange(exchange);
     // Remove from compare if it was there
     setCompareExchanges(prev => prev.filter(e => e !== exchange));
-  };
+  }, []);
   
-  const handleCompareSelection = (exchange: string) => {
+  const handleCompareSelection = useCallback((exchange: string) => {
     const isInCompare = compareExchanges.includes(exchange);
     if (isInCompare) {
       // Remove from compare
@@ -175,28 +205,8 @@ const TokenListingDashboard = () => {
         setCompareExchanges(prev => [...prev, exchange]);
       }
     }
-  };
+  }, [compareExchanges, primaryExchange]);
   
-  const goToCompareStep = () => {
-    setSelectionStep('compare');
-  };
-  
-  const goToPrimaryStep = () => {
-    setSelectionStep('primary');
-    setCompareExchanges([]); // Clear compare selections
-  };
-  
-  const completeSelection = () => {
-    setSelectionStep('complete');
-    setCurrentPage(1); // Reset pagination
-  };
-  
-  const startNewSelection = () => {
-    setSelectionStep('primary');
-    setPrimaryExchange('');
-    setCompareExchanges([]);
-    setCurrentPage(1);
-  };
 
   const handleRowsPerPageChange = (newRowsPerPage: number) => {
     setRowsPerPage(newRowsPerPage);
@@ -266,7 +276,7 @@ const TokenListingDashboard = () => {
                     <Skeleton 
                       key={i}
                       height="32px" 
-                      width={`${60 + Math.random() * 40}px`}
+                      width={`${60 + (i * 13 % 40)}px`}
                       borderRadius="8px"
                     />
                   ))}
@@ -344,372 +354,225 @@ const TokenListingDashboard = () => {
           marginBottom: '30px'
         }}>
           {/* Left Column - Exchange Comparison */}
-          <div style={{
-            background: '#1A1B1E',
-            borderRadius: '12px',
-            padding: '24px',
-            border: '1px solid #212228'
-          }}>
-            {/* Step Progress Indicator */}
-            <div style={{ marginBottom: '20px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '12px' }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: selectionStep === 'primary' ? '#3b82f6' : primaryExchange ? '#10b981' : '#6b7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#ffffff'
-                  }}>
-                    {primaryExchange && selectionStep !== 'primary' ? '✓' : '1'}
+          <div className={styles.container}>
+            <h2 className={styles.title}>
+              Exchange Comparison
+            </h2>
+            <p className={styles.subtitle}>
+              Compare listing coverage between exchanges
+            </p>
+
+            {/* Dropdown Controls */}
+            <div className={styles.dropdownControls}>
+              {/* Primary Exchange Dropdown */}
+              <div className={styles.dropdownWrapper}>
+                <button
+                  onClick={() => {
+                    setPrimaryDropdownOpen(!primaryDropdownOpen);
+                    setCompareDropdownOpen(false);
+                  }}
+                  className={`${styles.dropdownButton} ${styles.primaryButton} ${primaryDropdownOpen ? styles.active : ''}`}
+                >
+                  <span>{primaryExchange ? primaryExchange.charAt(0).toUpperCase() + primaryExchange.slice(1) : 'Select Primary'}</span>
+                  <span className={`${styles.dropdownIcon} ${primaryDropdownOpen ? styles.open : ''}`}>▼</span>
+                </button>
+                
+                {primaryDropdownOpen && (
+                  <div className={styles.dropdownContent}>
+                    {/* Search Input */}
+                    <div className={styles.searchWrapper}>
+                      <input
+                        type="text"
+                        placeholder="Search exchanges..."
+                        value={primarySearchTerm}
+                        onChange={(e) => setPrimarySearchTerm(e.target.value)}
+                        className={`${styles.searchInput} ${styles.primarySearch}`}
+                      />
+                    </div>
+                    
+                    {/* Exchange List */}
+                    <div className={styles.exchangeList}>
+                      {exchanges.filter(exchange => 
+                        exchange.toLowerCase().includes(debouncedPrimarySearch.toLowerCase())
+                      ).map(exchange => (
+                        <div
+                          key={exchange}
+                          onClick={() => {
+                            handlePrimarySelection(exchange);
+                            setPrimaryDropdownOpen(false);
+                            setPrimarySearchTerm('');
+                          }}
+                          className={`${styles.exchangeItem} ${styles.primaryHover}`}
+                        >
+                          <div className={styles.exchangeItemContent}>
+                            <div className={styles.hamburgerIcon}>
+                              <div className={styles.hamburgerLine}></div>
+                              <div className={styles.hamburgerLine}></div>
+                              <div className={styles.hamburgerLine}></div>
+                            </div>
+                            <span className={styles.exchangeName}>{exchange}</span>
+                          </div>
+                          {primaryExchange === exchange && (
+                            <span className={styles.selectedIndicator}>✓</span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
                   </div>
-                  <span style={{ fontSize: '14px', color: selectionStep === 'primary' ? '#ffffff' : '#9ca3af' }}>Select Primary</span>
-                </div>
-                
-                <div style={{ width: '20px', height: '2px', background: '#2a2b35' }} />
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: selectionStep === 'compare' ? '#3b82f6' : (selectionStep === 'complete' && compareExchanges.length > 0) ? '#10b981' : '#6b7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#ffffff'
-                  }}>
-                    {selectionStep === 'complete' && compareExchanges.length > 0 ? '✓' : '2'}
-                  </div>
-                  <span style={{ fontSize: '14px', color: selectionStep === 'compare' ? '#ffffff' : '#9ca3af' }}>Select Compare</span>
-                </div>
-                
-                <div style={{ width: '20px', height: '2px', background: '#2a2b35' }} />
-                
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: selectionStep === 'complete' ? '#10b981' : '#6b7280',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: '600',
-                    color: '#ffffff'
-                  }}>
-                    {selectionStep === 'complete' ? '✓' : '3'}
-                  </div>
-                  <span style={{ fontSize: '14px', color: selectionStep === 'complete' ? '#ffffff' : '#9ca3af' }}>Compare</span>
-                </div>
+                )}
               </div>
-            </div>
-            
-            {/* Step Content */}
-            {selectionStep === 'primary' && (
-              <div>
-                <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#ffffff', margin: '0 0 8px 0' }}>
-                  Step 1: Select Primary Exchange
-                </h2>
-                <p style={{ fontSize: '14px', color: '#9ca3af', margin: '0 0 24px 0' }}>
-                  Choose the main exchange to use as your reference point
-                </p>
-              </div>
-            )}
-            
-            {selectionStep === 'compare' && (
-              <div>
-                <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#ffffff', margin: '0 0 8px 0' }}>
-                  Step 2: Select Compare Exchanges
-                </h2>
-                <p style={{ fontSize: '14px', color: '#9ca3af', margin: '0 0 24px 0' }}>
-                  Choose up to 4 exchanges to compare against <span style={{ color: '#10b981', fontWeight: '500' }}>{primaryExchange}</span>
-                </p>
-              </div>
-            )}
-            
-            {selectionStep === 'complete' && (
-              <div>
-                <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#ffffff', margin: '0 0 8px 0' }}>
-                  Exchange Comparison
-                </h2>
-                <p style={{ fontSize: '14px', color: '#9ca3af', margin: '0 0 24px 0' }}>
-                  Comparing <span style={{ color: '#10b981', fontWeight: '500' }}>{primaryExchange}</span> against{' '}
-                  <span style={{ color: '#3b82f6', fontWeight: '500' }}>
-                    {compareExchanges.length > 0 ? compareExchanges.join(', ') : 'all exchanges'}
+
+              {/* Compare Exchanges Dropdown */}
+              <div className={styles.dropdownWrapper}>
+                <button
+                  onClick={() => {
+                    setCompareDropdownOpen(!compareDropdownOpen);
+                    setPrimaryDropdownOpen(false);
+                  }}
+                  className={`${styles.dropdownButton} ${styles.compareButton} ${compareDropdownOpen ? styles.active : ''}`}
+                >
+                  <span>
+                    {compareExchanges.length > 0 
+                      ? `Compare (${compareExchanges.length})`
+                      : 'Select Compare'
+                    }
                   </span>
-                </p>
-              </div>
-            )}
-
-            {/* Exchange Chips */}
-            <div style={{
-              display: 'flex',
-              flexWrap: 'wrap',
-              gap: '12px',
-              marginBottom: '24px'
-            }}>
-              {exchanges.map(exchange => {
-                const isPrimary = primaryExchange === exchange;
-                const isCompare = compareExchanges.includes(exchange);
-                const isSelected = selectionStep === 'primary' ? isPrimary : selectionStep === 'compare' ? (isPrimary || isCompare) : (isPrimary || isCompare);
-                const isDisabled = false; // Don't disable, just don't respond to clicks when inappropriate
+                  <span className={`${styles.dropdownIcon} ${compareDropdownOpen ? styles.open : ''}`}>▼</span>
+                </button>
                 
-                return (
-                  <button
-                    key={exchange}
-                    onClick={() => {
-                      if (selectionStep === 'primary') {
-                        handlePrimarySelection(exchange);
-                      } else if (selectionStep === 'compare' && exchange !== primaryExchange) {
-                        handleCompareSelection(exchange);
-                      }
-                      // Do nothing if clicking PRIMARY during compare step
-                    }}
-                    disabled={isDisabled}
-                    style={{
-                      position: 'relative',
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      height: '44px',
-                      padding: '0 28px',
-                      borderRadius: '12px',
-                      fontSize: '14px',
-                      fontWeight: '400',
-                      cursor: (selectionStep === 'compare' && isPrimary) ? 'default' : 'pointer',
-                      outline: 'none',
-                      transition: 'all 0.2s ease',
-                      opacity: 1,
-                      
-                      // Dynamic styling based on step and selection
-                      background: isSelected ? 
-                        (selectionStep === 'primary' || isPrimary ? 'rgba(16, 185, 129, 0.15)' : 'rgba(59, 130, 246, 0.15)') : 
-                        '#13141a',
-                      border: isSelected ? 
-                        (selectionStep === 'primary' || isPrimary ? '1.5px solid #10b981' : '1.5px solid #3b82f6') :
-                        '1px solid #212228',
-                      color: '#ffffff'
-                    }}
-                    onMouseEnter={(e) => {
-                      if (!isSelected && !(selectionStep === 'compare' && isPrimary)) {
-                        e.currentTarget.style.borderColor = '#ffffff';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (!isSelected && !(selectionStep === 'compare' && isPrimary)) {
-                        e.currentTarget.style.borderColor = '#212228';
-                      }
-                    }}
-                  >
-                    {/* PRIMARY bubble - always show when is primary */}
-                    {isPrimary && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '-8px',
-                        right: '4px',
-                        fontSize: '9px',
-                        fontWeight: '700',
-                        color: '#ffffff',
-                        backgroundColor: '#10b981',
-                        padding: '3px 8px',
-                        borderRadius: '12px',
-                        lineHeight: '12px',
-                        border: '2px solid #1A1B1E',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                        zIndex: 10
-                      }}>
-                        PRIMARY
-                      </span>
-                    )}
+                {compareDropdownOpen && (
+                  <div style={{
+                    position: 'absolute',
+                    top: '100%',
+                    left: 0,
+                    right: 0,
+                    background: '#1A1B1E',
+                    border: '1px solid #212228',
+                    borderRadius: '8px',
+                    marginTop: '4px',
+                    zIndex: 1000,
+                    maxHeight: '300px',
+                    overflowY: 'auto'
+                  }}>
+                    {/* Search Input */}
+                    <div style={{ padding: '12px', borderBottom: '1px solid #212228' }}>
+                      <input
+                        type="text"
+                        placeholder="Search exchanges..."
+                        value={compareSearchTerm}
+                        onChange={(e) => setCompareSearchTerm(e.target.value)}
+                        style={{
+                          width: '100%',
+                          padding: '8px 12px',
+                          background: '#13141a',
+                          border: '1px solid #212228',
+                          borderRadius: '6px',
+                          color: '#ffffff',
+                          fontSize: '14px',
+                          outline: 'none'
+                        }}
+                        onFocus={(e) => e.currentTarget.style.borderColor = '#4869EF'}
+                        onBlur={(e) => e.currentTarget.style.borderColor = '#212228'}
+                      />
+                    </div>
                     
-                    {/* COMPARE bubble - always show when is compare */}
-                    {isCompare && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '-8px',
-                        right: '4px',
-                        fontSize: '9px',
-                        fontWeight: '700',
-                        color: '#ffffff',
-                        backgroundColor: '#3b82f6',
-                        padding: '3px 8px',
-                        borderRadius: '12px',
-                        lineHeight: '12px',
-                        border: '2px solid #1A1B1E',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)',
-                        zIndex: 10
-                      }}>
-                        COMPARE
-                      </span>
-                    )}
-                    
-                    {/* Selection checkmark for active selection steps (only when no primary/compare label) */}
-                    {!isPrimary && !isCompare && selectionStep !== 'complete' && isSelected && (
-                      <span style={{
-                        position: 'absolute',
-                        top: '4px',
-                        right: '4px',
-                        width: '16px',
-                        height: '16px',
-                        borderRadius: '50%',
-                        background: selectionStep === 'primary' ? '#10b981' : '#3b82f6',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        fontSize: '10px',
-                        color: '#ffffff',
-                        border: '2px solid #1A1B1E',
-                        boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
-                      }}>
-                        ✓
-                      </span>
-                    )}
-                    
-                    {exchange}
-                  </button>
-                );
-              })}
+                    {/* Exchange List */}
+                    <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
+                      {exchanges.filter(exchange => 
+                        exchange.toLowerCase().includes(debouncedCompareSearch.toLowerCase()) &&
+                        exchange !== primaryExchange
+                      ).map(exchange => (
+                        <div
+                          key={exchange}
+                          onClick={() => {
+                            if (compareExchanges.length < 4 || compareExchanges.includes(exchange)) {
+                              handleCompareSelection(exchange);
+                            }
+                          }}
+                          style={{
+                            padding: '14px 16px',
+                            cursor: (compareExchanges.length >= 4 && !compareExchanges.includes(exchange)) ? 'not-allowed' : 'pointer',
+                            borderBottom: '1px solid #212228',
+                            transition: 'all 0.2s ease',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            opacity: (compareExchanges.length >= 4 && !compareExchanges.includes(exchange)) ? 0.5 : 1
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!(compareExchanges.length >= 4 && !compareExchanges.includes(exchange))) {
+                              e.currentTarget.style.background = 'rgba(72, 105, 239, 0.1)';
+                              e.currentTarget.style.borderRadius = '6px';
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = 'transparent';
+                            e.currentTarget.style.borderRadius = '0';
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <div style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '2px',
+                              opacity: 0.5
+                            }}>
+                              <div style={{ width: '12px', height: '2px', background: '#9ca3af', borderRadius: '1px' }}></div>
+                              <div style={{ width: '12px', height: '2px', background: '#9ca3af', borderRadius: '1px' }}></div>
+                              <div style={{ width: '12px', height: '2px', background: '#9ca3af', borderRadius: '1px' }}></div>
+                            </div>
+                            <div style={{
+                              width: '16px',
+                              height: '16px',
+                              border: `2px solid ${compareExchanges.includes(exchange) ? '#4869EF' : '#4869EF'}`,
+                              borderRadius: '3px',
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              background: compareExchanges.includes(exchange) ? '#4869EF' : 'transparent',
+                              transition: 'all 0.2s ease'
+                            }}>
+                              {compareExchanges.includes(exchange) && (
+                                <span style={{ color: '#ffffff', fontSize: '10px', fontWeight: '600' }}>✓</span>
+                              )}
+                            </div>
+                            <span style={{ color: '#ffffff', fontSize: '14px' }}>{exchange}</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Reset All Button */}
+              <button
+                onClick={() => {
+                  setPrimaryExchange(parityData?.baseExchange || 'Binance');
+                  setCompareExchanges([]);
+                  setPrimaryDropdownOpen(false);
+                  setCompareDropdownOpen(false);
+                  setPrimarySearchTerm('');
+                  setCompareSearchTerm('');
+                }}
+                className={styles.resetButton}
+              >
+                Reset all
+              </button>
             </div>
 
-            {/* Action Buttons */}
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              {selectionStep === 'primary' && primaryExchange && (
-                <button
-                  onClick={goToCompareStep}
-                  style={{
-                    padding: '8px 16px',
-                    background: '#10b981',
-                    color: '#ffffff',
-                    border: 'none',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#059669'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = '#10b981'}
-                >
-                  Next: Select Compare
-                </button>
-              )}
-              
-              {selectionStep === 'compare' && (
-                <>
-                  <button
-                    onClick={goToPrimaryStep}
-                    style={{
-                      padding: '8px 16px',
-                      background: 'transparent',
-                      color: '#9ca3af',
-                      border: '1px solid #2a2b35',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '400',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = '#ffffff';
-                      e.currentTarget.style.color = '#ffffff';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = '#2a2b35';
-                      e.currentTarget.style.color = '#9ca3af';
-                    }}
-                  >
-                    ← Back
-                  </button>
-                  <button
-                    onClick={completeSelection}
-                    disabled={compareExchanges.length === 0}
-                    style={{
-                      padding: '8px 16px',
-                      background: compareExchanges.length > 0 ? '#10b981' : '#374151',
-                      color: '#ffffff',
-                      border: 'none',
-                      borderRadius: '8px',
-                      fontSize: '14px',
-                      fontWeight: '500',
-                      cursor: compareExchanges.length > 0 ? 'pointer' : 'not-allowed',
-                      transition: 'all 0.2s ease',
-                      opacity: compareExchanges.length > 0 ? 1 : 0.5
-                    }}
-                    onMouseEnter={(e) => {
-                      if (compareExchanges.length > 0) {
-                        e.currentTarget.style.background = '#059669';
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      if (compareExchanges.length > 0) {
-                        e.currentTarget.style.background = '#10b981';
-                      }
-                    }}
-                  >
-                    Start Comparison ({compareExchanges.length} selected)
-                  </button>
-                </>
-              )}
-              
-              {selectionStep === 'complete' && (
-                <button
-                  onClick={startNewSelection}
-                  style={{
-                    padding: '8px 16px',
-                    background: 'transparent',
-                    color: '#3b82f6',
-                    border: '1px solid #3b82f6',
-                    borderRadius: '8px',
-                    fontSize: '14px',
-                    fontWeight: '400',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                  }}
-                >
-                  Change Selection
-                </button>
-              )}
-            </div>
-            
             {/* Status Messages */}
-            {selectionStep === 'compare' && compareExchanges.length >= 4 && (
-              <div style={{ marginTop: '12px' }}>
-                <p style={{ fontSize: '12px', color: '#f97316', margin: 0 }}>
+            {compareExchanges.length >= 4 && (
+              <div className={styles.statusMessage}>
+                <p className={styles.warningMessage}>
                   ⚠️ Maximum of 4 exchanges can be compared
                 </p>
               </div>
             )}
-            {selectionStep === 'compare' && compareExchanges.length > 0 && compareExchanges.length < 4 && (
-              <div style={{ marginTop: '12px' }}>
-                <p style={{ fontSize: '12px', color: '#9ca3af', margin: 0 }}>
-                  You can select {4 - compareExchanges.length} more exchange{4 - compareExchanges.length !== 1 ? 's' : ''} or proceed with current selection
+            {compareExchanges.length > 0 && compareExchanges.length < 4 && (
+              <div className={styles.statusMessage}>
+                <p className={styles.infoMessage}>
+                  You can select {4 - compareExchanges.length} more exchange{4 - compareExchanges.length !== 1 ? 's' : ''}
                 </p>
               </div>
             )}
@@ -719,27 +582,27 @@ const TokenListingDashboard = () => {
           <div style={{
             background: '#1A1B1E',
             borderRadius: '12px',
-            padding: '24px',
+            padding: '16px',
             border: '1px solid #212228'
           }}>
             <div style={{
-              marginBottom: '24px'
+              marginBottom: '16px'
             }}>
               <div>
-                <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
+                <h2 style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
                   {compareExchanges.length > 0 
                     ? `Comparison Overview` 
                     : 'Coverage Overview'
                   }
                 </h2>
                 {compareExchanges.length > 0 ? (
-                  <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0 0' }}>
+                  <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
                     Tokens where <span style={{ color: '#10b981' }}>{primaryExchange}</span> differs from{' '}
-                    <span style={{ color: '#3b82f6' }}>{compareExchanges.join(', ')}</span>
+                    <span style={{ color: '#4869EF' }}>{compareExchanges.join(', ')}</span>
                   </p>
                 ) : (
-                  <p style={{ fontSize: '12px', color: '#9ca3af', margin: '4px 0 0 0' }}>
-                    Overall exchange coverage statistics
+                  <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
+                    Exchange coverage statistics
                   </p>
                 )}
               </div>
@@ -749,57 +612,57 @@ const TokenListingDashboard = () => {
             <div style={{
               display: 'grid',
               gridTemplateColumns: 'repeat(2, 1fr)',
-              gap: '16px'
+              gap: '10px'
             }}>
               <div style={{
                 background: '#13141a',
-                borderRadius: '8px',
-                padding: '16px',
+                borderRadius: '6px',
+                padding: '12px',
                 border: '1px solid #2a2b35'
               }}>
                 <div style={{
-                  fontSize: '12px',
+                  fontSize: '10px',
                   color: '#9ca3af',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  marginBottom: '8px'
+                  marginBottom: '6px'
                 }}>
-                  TOKENS MISSING
+                  MISSING
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <span style={{ fontSize: '24px', fontWeight: '700', color: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {displayedCoverageOverview?.tokensMissing || 0}
                   </span>
                   <span style={{
-                    fontSize: '14px',
+                    fontSize: '11px',
                     color: compareExchanges.length > 0 ? '#f97316' : '#10b981',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '2px'
                   }}>
                     {compareExchanges.length > 0 ? 'filtered' : '+12%'} 
-                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '12px', height: '12px' }} />}
+                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '10px', height: '10px' }} />}
                   </span>
                 </div>
               </div>
               
               <div style={{
                 background: '#13141a',
-                borderRadius: '8px',
-                padding: '16px',
+                borderRadius: '6px',
+                padding: '12px',
                 border: '1px solid #2a2b35'
               }}>
                 <div style={{
-                  fontSize: '12px',
+                  fontSize: '10px',
                   color: '#9ca3af',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  marginBottom: '8px'
+                  marginBottom: '6px'
                 }}>
-                  {compareExchanges.length > 0 ? 'COVERAGE MATCH' : 'AVG COVERAGE'}
+                  {compareExchanges.length > 0 ? 'MATCH' : 'COVERAGE'}
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <span style={{ fontSize: '24px', fontWeight: '700', color: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {(() => {
                       if (compareExchanges.length === 0) {
                         return `${displayedCoverageOverview?.averageCoverage || 0}%`;
@@ -843,80 +706,80 @@ const TokenListingDashboard = () => {
                   }
                   </span>
                   <span style={{
-                    fontSize: '14px',
-                    color: compareExchanges.length > 0 ? '#3b82f6' : '#10b981',
+                    fontSize: '11px',
+                    color: compareExchanges.length > 0 ? '#4869EF' : '#10b981',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '2px'
                   }}>
                     {compareExchanges.length > 0 ? 'overlap' : '+2.1%'} 
-                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '12px', height: '12px' }} />}
+                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '10px', height: '10px' }} />}
                   </span>
                 </div>
               </div>
               
               <div style={{
                 background: '#13141a',
-                borderRadius: '8px',
-                padding: '16px',
+                borderRadius: '6px',
+                padding: '12px',
                 border: '1px solid #2a2b35'
               }}>
                 <div style={{
-                  fontSize: '12px',
+                  fontSize: '10px',
                   color: '#9ca3af',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  marginBottom: '8px'
+                  marginBottom: '6px'
                 }}>
                   EXCLUSIVE
                 </div>
-                <div style={{ display: 'flex', alignItems: 'baseline', gap: '8px' }}>
-                  <span style={{ fontSize: '24px', fontWeight: '700', color: '#ffffff' }}>
+                <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {displayedCoverageOverview?.exclusiveListings || 0}
                   </span>
                   <span style={{
-                    fontSize: '14px',
+                    fontSize: '11px',
                     color: compareExchanges.length > 0 ? '#f97316' : '#10b981',
                     display: 'flex',
                     alignItems: 'center',
                     gap: '2px'
                   }}>
                     {compareExchanges.length > 0 ? 'filtered' : '+2.1%'} 
-                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '12px', height: '12px' }} />}
+                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '10px', height: '10px' }} />}
                   </span>
                 </div>
               </div>
 
               <div style={{
                 background: '#13141a',
-                borderRadius: '8px',
-                padding: '16px',
+                borderRadius: '6px',
+                padding: '12px',
                 border: '1px solid #2a2b35'
               }}>
                 <div style={{
-                  fontSize: '12px',
+                  fontSize: '10px',
                   color: '#9ca3af',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  marginBottom: '8px'
+                  marginBottom: '6px'
                 }}>
-                  COVERAGE RATE
+                  RATE
                 </div>
                 <div style={{
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'center',
-                  marginBottom: '12px'
+                  marginBottom: '8px'
                 }}>
-                  <span style={{ fontSize: '24px', fontWeight: '700', color: '#ffffff' }}>
+                  <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {displayedCoverageOverview?.coverageRate || 0}%
                   </span>
                 </div>
                 <div style={{
                   width: '100%',
                   background: '#2a2b35',
-                  borderRadius: '8px',
-                  height: '8px',
+                  borderRadius: '6px',
+                  height: '6px',
                   overflow: 'hidden'
                 }}>
                   <div 
@@ -925,7 +788,7 @@ const TokenListingDashboard = () => {
                       background: compareExchanges.length > 0 
                         ? 'linear-gradient(90deg, #f97316, #fb923c)' 
                         : 'linear-gradient(90deg, #10b981, #14d395)',
-                      borderRadius: '8px',
+                      borderRadius: '6px',
                       transition: 'width 0.5s ease',
                       width: `${displayedCoverageOverview?.coverageRate || 0}%`
                     }}
@@ -1392,18 +1255,37 @@ const TokenListingDashboard = () => {
                   <div style={{ fontSize: '13px', color: '#ffffff' }}>{token.marketCapDisplay}</div>
                   <div style={{ fontSize: '13px', color: '#ffffff' }}>{token.volume24hDisplay}</div>
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
-                    {token.isMissing && (
-                      <span style={{
-                        padding: '1px 4px',
-                        background: 'rgba(249, 115, 22, 0.2)',
-                        color: '#f97316',
-                        borderRadius: '3px',
-                        fontSize: '10px',
-                        fontWeight: '500'
-                      }}>
-                        MISS
-                      </span>
-                    )}
+                    {(() => {
+                      // Check if token is missing from PRIMARY exchange
+                      const isOnPrimary = (() => {
+                        switch (primaryExchange.toLowerCase()) {
+                          case 'binance': return token.exchanges.binance;
+                          case 'coinbase': return token.exchanges.coinbase;
+                          case 'kraken': return token.exchanges.kraken;
+                          case 'okx': return token.exchanges.okx;
+                          case 'bybit': return token.exchanges.bybit;
+                          case 'kucoin': return token.exchanges.kucoin;
+                          case 'huobi': return token.exchanges.huobi;
+                          case 'gate.io': return token.exchanges.gate;
+                          case 'mexc': return token.exchanges.mexc;
+                          default: return false;
+                        }
+                      })();
+                      
+                      // Show MISS only if NOT on primary exchange
+                      return !isOnPrimary && (
+                        <span style={{
+                          padding: '1px 4px',
+                          background: 'rgba(249, 115, 22, 0.2)',
+                          color: '#f97316',
+                          borderRadius: '3px',
+                          fontSize: '10px',
+                          fontWeight: '500'
+                        }}>
+                          MISS
+                        </span>
+                      );
+                    })()}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
                     <ExchangeIcon available={token.exchanges.binance} />

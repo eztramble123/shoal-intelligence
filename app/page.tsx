@@ -254,7 +254,7 @@ export default function Dashboard() {
       }}>
         <div style={{ marginBottom: '30px' }}>
           <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
-            Main Page
+            Home Screen
           </h1>
           <p style={{ fontSize: '14px', color: '#9ca3af' }}>
             Crypto analytics dashboard
@@ -294,7 +294,7 @@ export default function Dashboard() {
             }}
             >
               <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                Token coverage vs {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)}
+                {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)} listing opportunities vs other exchanges
               </div>
               
               <div style={{ marginTop: '20px', marginBottom: '30px' }}>
@@ -336,7 +336,7 @@ export default function Dashboard() {
                   e.currentTarget.style.margin = '0';
                 }}
                 >
-                  <span style={{ fontSize: '14px', color: '#ffffff' }}>Missing Tokens</span>
+                  <span style={{ fontSize: '14px', color: '#ffffff' }}>Missing from {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)}</span>
                   <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
 {parityLoading ? '...' : parityError ? '—' : (parityData?.coverageOverview?.tokensMissing || 0)}
                   </span>
@@ -411,6 +411,7 @@ export default function Dashboard() {
                     >
                       <span style={{ fontSize: '14px', color: '#ffffff' }}>
                         {token.symbol} <span style={{ color: '#9ca3af', fontSize: '12px' }}>({token.name})</span>
+                        <span style={{ color: '#ef4444', fontSize: '10px', marginLeft: '6px' }}>• Not on {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)}</span>
                       </span>
                       <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>{token.coverageRatio}</span>
                     </div>
@@ -687,7 +688,8 @@ export default function Dashboard() {
                     { 
                       label: 'Top Recent Listed', 
                       value: listingsError ? '—' : (listingsData?.fastestGrowing?.[0]?.symbol || 'N/A'), 
-                      isGreen: false 
+                      isGreen: false,
+                      timeframe: listingsData?.fastestGrowing?.[0]?.timeframe
                     }
                   ].map((stat, index) => (
                     <div key={index} style={{
@@ -710,7 +712,19 @@ export default function Dashboard() {
                       e.currentTarget.style.margin = '0';
                     }}
                     >
-                      <span style={{ fontSize: '14px', color: '#ffffff' }}>{stat.label}</span>
+                      <span style={{ fontSize: '14px', color: '#ffffff' }}>
+                        {stat.label}
+                        {stat.timeframe && (
+                          <span style={{ 
+                            fontSize: '10px', 
+                            color: '#6b7280', 
+                            marginLeft: '6px',
+                            fontWeight: '400'
+                          }}>
+                            ({stat.timeframe})
+                          </span>
+                        )}
+                      </span>
                       <span style={{ 
                         fontSize: '14px', 
                         fontWeight: '600',
