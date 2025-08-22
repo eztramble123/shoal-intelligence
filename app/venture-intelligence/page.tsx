@@ -17,14 +17,6 @@ import { formatAmount } from '@/app/lib/funding-utils';
 //   changeType: 'up' | 'down';
 // }
 
-interface TrendingCategory {
-  rank: number;
-  name: string;
-  amount: string;
-  deals: number;
-  change: string;
-  changeType: 'up' | 'down' | 'neutral';
-}
 
 interface FundingRound {
   time: string;
@@ -267,24 +259,6 @@ const VentureIntelligenceDashboard = () => {
     { rank: 1, company: 'Loading...', round: 'Loading...', amount: '$0', date: '', leadInvestor: '' }
   ];
 
-  const trendingCategories: TrendingCategory[] = fundingData ?
-    fundingData.last90DaysCategories
-      .sort((a, b) => b.totalAmount - a.totalAmount)
-      .slice(0, 5)
-      .map((cat, idx) => ({
-        rank: idx + 1,
-        name: cat.category,
-        amount: cat.totalAmount >= 1e9 ? `$${(cat.totalAmount / 1e9).toFixed(1)}B` :
-                cat.totalAmount >= 1e6 ? `$${(cat.totalAmount / 1e6).toFixed(0)}M` :
-                cat.totalAmount >= 1e3 ? `$${(cat.totalAmount / 1e3).toFixed(0)}K` :
-                `$${cat.totalAmount.toFixed(0)}`,
-        deals: cat.dealCount,
-        change: '0.0%', // No trend data for 90-day categories
-        changeType: 'neutral' as const
-      })) :
-    [
-      { rank: 1, name: 'Loading...', amount: '$0', deals: 0, change: '+0.0%', changeType: 'up' },
-    ];
 
   const allFundingRounds: FundingRound[] = fundingData ?
     fundingData.latestRounds.map(round => ({
@@ -412,35 +386,6 @@ const VentureIntelligenceDashboard = () => {
     ];
 
 
-  const ChangeIndicator = ({ value, type }: { value: string; type: 'up' | 'down' | 'neutral' }) => {
-    const getColor = () => {
-      if (type === 'up') return '#10b981';
-      if (type === 'down') return '#ef4444';
-      return '#9ca3af'; // neutral color
-    };
-    
-    const getIcon = () => {
-      if (type === 'up') return '↗';
-      if (type === 'down') return '↘';
-      return '→'; // neutral arrow
-    };
-    
-    return (
-      <span style={{ 
-        color: getColor(),
-        fontSize: '12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '2px'
-      }}>
-        {value}
-        <span style={{ fontSize: '10px' }}>
-          {getIcon()}
-        </span>
-      </span>
-    );
-  };
-
   return (
     <SharedLayout currentPage="venture-intelligence">
       <div style={{
@@ -519,33 +464,6 @@ const VentureIntelligenceDashboard = () => {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           <Skeleton height="14px" width="40px" />
                           <Skeleton height="12px" width="30px" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-
-                  {/* Divider */}
-                  <Skeleton height="1px" width="100%" style={{ marginBottom: '24px' }} />
-
-                  {/* Trending Categories List */}
-                  <Skeleton height="12px" width="140px" style={{ marginBottom: '16px' }} />
-                  
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                    {Array.from({ length: 5 }).map((_, i) => (
-                      <div key={i} style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '8px 0'
-                      }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                          <Skeleton width="12px" height="12px" />
-                          <Skeleton height="14px" width="80px" />
-                        </div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                          <Skeleton height="14px" width="50px" />
-                          <Skeleton height="12px" width="40px" />
-                          <Skeleton width="20px" height="12px" />
                         </div>
                       </div>
                     ))}
@@ -778,56 +696,6 @@ const VentureIntelligenceDashboard = () => {
                     <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Divider */}
-              <div style={{ height: '1px', background: '#2a2b35', marginBottom: '24px' }}></div>
-
-              {/* Trending Categories Section */}
-              <h3 style={{
-                fontSize: '12px',
-                fontWeight: '500',
-                color: '#9ca3af',
-                marginBottom: '16px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                Trending categories
-              </h3>
-              
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                {trendingCategories.map((category) => (
-                  <div key={category.rank} style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: '8px 12px',
-                    borderRadius: '6px',
-                    cursor: 'pointer',
-                    transition: 'background 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = '#13141a'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '12px', color: '#9ca3af', width: '16px' }}>
-                        {category.rank}
-                      </span>
-                      <span style={{ fontSize: '14px', color: '#ffffff' }}>
-                        {category.name}
-                      </span>
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                        {category.amount}
-                      </span>
-                      <span style={{ fontSize: '12px', color: '#9ca3af' }}>
-                        {category.deals} deals
-                      </span>
-                      <ChangeIndicator value={category.change} type={category.changeType} />
-                    </div>
-                  </div>
-                ))}
               </div>
             </div>
           </div>

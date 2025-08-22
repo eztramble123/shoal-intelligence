@@ -439,7 +439,7 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
     .slice(0, 4)
     .map(token => ({
       symbol: token.ticker,
-      exchanges: `+${token.exchangesCount} exchanges`,
+      exchanges: token.primaryExchange || token.exchanges[0] || 'Unknown',
       status: 'up' as const,
       timeframe: timeframeLabel
     }));

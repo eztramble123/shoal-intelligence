@@ -5,6 +5,21 @@ import {
   ParityDashboardData 
 } from '@/app/types/parity';
 
+// Exchange mapping configuration
+export const EXCHANGE_CONFIG = {
+  binance: { display: 'Binance' },
+  coinbase: { display: 'Coinbase' },
+  kraken: { display: 'Kraken' },
+  'gate.io': { display: 'Gate.io', aliases: ['Gate'] },
+  mexc: { display: 'MEXC' },
+  okx: { display: 'OKX', aliases: ['OKEx'] },
+  bybit: { display: 'Bybit' },
+  kucoin: { display: 'KuCoin' },
+  huobi: { display: 'Huobi', aliases: ['HTX'] }
+} as const;
+
+export type ExchangeKey = keyof typeof EXCHANGE_CONFIG;
+
 // Format large numbers for display
 export const formatNumber = (num: number): string => {
   if (num >= 1e9) return `$${(num / 1e9).toFixed(1)}B`;
@@ -21,10 +36,102 @@ export const formatVolume = (num: number): string => {
   return `$${num.toFixed(0)}`;
 };
 
-// Parse all exchanges string into array
-export const parseAllExchanges = (exchangesStr: string): string[] => {
-  if (!exchangesStr || exchangesStr.trim() === '') return [];
-  return exchangesStr.split(',').map(e => e.trim()).filter(Boolean);
+// Parse all exchanges from string or array format
+export const parseAllExchanges = (exchanges: string | string[] | unknown): string[] => {
+  // Handle undefined/null/empty
+  if (!exchanges) return [];
+  
+  // Handle array format (like in mock data)
+  if (Array.isArray(exchanges)) {
+    return exchanges.filter(Boolean).map(e => String(e).trim());
+  }
+  
+  // Handle string format (expected from real API)
+  if (typeof exchanges === 'string') {
+    if (exchanges.trim() === '') return [];
+    return exchanges.split(',').map(e => e.trim()).filter(Boolean);
+  }
+  
+  console.warn('[parseAllExchanges] Unexpected format:', typeof exchanges, exchanges);
+  return [];
+};
+
+// Check if exchange name matches any alias
+const matchesExchangeAlias = (exchangeName: string, config: { display: string; aliases?: readonly string[] }): boolean => {
+  const name = exchangeName.toLowerCase().trim();
+  const configKey = config.display.toLowerCase();
+  
+  // Check main name (exact match)
+  if (name === configKey) return true;
+  
+  // Check main name (contains - for partial matches like "gate.io" matching "gate")
+  if (name.includes(configKey.split('.')[0]) || configKey.includes(name)) return true;
+  
+  // Check aliases
+  if (config.aliases) {
+    return config.aliases.some(alias => {
+      const aliasLower = alias.toLowerCase();
+      return name === aliasLower || name.includes(aliasLower) || aliasLower.includes(name);
+    });
+  }
+  
+  return false;
+};
+
+// Get exchange availability from all_exchanges field only
+export const getExchangeAvailability = (raw: RawParityRecord, exchangeKey: ExchangeKey): boolean => {
+  const config = EXCHANGE_CONFIG[exchangeKey];
+  
+  // Use only allExchanges field for consistent data source across all exchanges
+  const allExchanges = parseAllExchanges(raw.allExchanges);
+  
+  // Debug logging for first few tokens and all OKX checks to verify data
+  const shouldLog = (raw.symbol && ['BTC', 'ETH', 'USDT', 'JUP', 'USDC'].includes(raw.symbol)) || exchangeKey === 'okx';
+  
+  if (shouldLog) {
+    console.log(`[DEBUG] ${raw.symbol || 'unknown'} - ${exchangeKey}:`, {
+      allExchanges_raw: raw.allExchanges,
+      allExchanges_parsed: allExchanges,
+      config_display: config.display,
+      config_aliases: 'aliases' in config ? config.aliases : undefined
+    });
+  }
+  
+  const result = allExchanges.some(exchange => matchesExchangeAlias(exchange, config));
+  
+  if (shouldLog) {
+    console.log(`[DEBUG] ${raw.symbol || 'unknown'} - ${exchangeKey} result:`, result);
+  }
+  
+  return result;
+};
+
+// Get all supported exchange keys
+export const getSupportedExchanges = (): ExchangeKey[] => {
+  return Object.keys(EXCHANGE_CONFIG) as ExchangeKey[];
+};
+
+// Get exchange display name
+export const getExchangeDisplayName = (exchangeKey: ExchangeKey): string => {
+  return EXCHANGE_CONFIG[exchangeKey].display;
+};
+
+// Check if processed token is available on exchange
+export const isTokenOnExchange = (token: ProcessedParityRecord, exchangeName: string): boolean => {
+  const normalizedName = exchangeName.toLowerCase();
+  
+  switch (normalizedName) {
+    case 'binance': return token.exchanges.binance;
+    case 'coinbase': return token.exchanges.coinbase;
+    case 'kraken': return token.exchanges.kraken;
+    case 'okx': return token.exchanges.okx;
+    case 'bybit': return token.exchanges.bybit;
+    case 'kucoin': return token.exchanges.kucoin;
+    case 'huobi': return token.exchanges.huobi;
+    case 'gate.io': return token.exchanges.gate;
+    case 'mexc': return token.exchanges.mexc;
+    default: return false;
+  }
 };
 
 // Calculate coverage metrics for a token relative to base exchange
@@ -38,6 +145,7 @@ export const calculateCoverage = (
   missing: string[];
   isOnBase: boolean;
 } => {
+  // Count all exchanges that are displayed in the UI (now including MEXC)
   const exchangeList = [
     { name: 'Binance', key: 'binance' as keyof typeof exchanges },
     { name: 'Coinbase', key: 'coinbase' as keyof typeof exchanges },
@@ -49,27 +157,16 @@ export const calculateCoverage = (
     { name: 'Gate.io', key: 'gate' as keyof typeof exchanges },
     { name: 'MEXC', key: 'mexc' as keyof typeof exchanges }
   ];
+  
+  // Debug: Always log exchange list length to verify it includes all 9 exchanges
+  if (exchangeList.length !== 9) {
+    console.error(`[COVERAGE ERROR] Exchange list has ${exchangeList.length} exchanges, expected 9`);
+  }
 
   // Check if token is on base exchange
   const isOnBase = exchanges[baseExchange as keyof typeof exchanges] || false;
   
-  // If comparing to a base exchange, calculate coverage relative to that
-  if (baseExchange && baseExchange !== 'all') {
-    const otherExchanges = exchangeList.filter(ex => ex.key !== baseExchange);
-    const availableCount = otherExchanges.filter(ex => exchanges[ex.key]).length;
-    const percentage = Math.round((availableCount / otherExchanges.length) * 100);
-    const missing = otherExchanges.filter(ex => !exchanges[ex.key]).map(ex => ex.name);
-
-    return {
-      count: availableCount,
-      percentage,
-      ratio: `${availableCount}/${otherExchanges.length}`,
-      missing,
-      isOnBase
-    };
-  }
-  
-  // Default behavior (all exchanges)
+  // Calculate coverage across all exchanges (not relative to base)
   const availableCount = exchangeList.filter(ex => exchanges[ex.key]).length;
   const totalExchanges = exchangeList.length;
   const percentage = Math.round((availableCount / totalExchanges) * 100);
@@ -80,27 +177,31 @@ export const calculateCoverage = (
     percentage,
     ratio: `${availableCount}/${totalExchanges}`,
     missing,
-    isOnBase: false
+    isOnBase
   };
 };
 
 // Process raw parity record
 export const processParityRecord = (raw: RawParityRecord, baseExchange: string = 'binance'): ProcessedParityRecord => {
+  // Use boolean fields from API for exchanges that have them
+  // Parse allExchanges for the ones that don't have boolean fields
+  const allExchangesList = parseAllExchanges(raw.allExchanges);
+  
   const exchanges = {
     binance: raw.isOnBinance || false,
     coinbase: raw.isOnCoinbase || false,
     kraken: raw.isOnKraken || false,
     mexc: raw.isOnMEXC || false,
     gate: raw.isOnGate || false,
-    // These aren't in the API but we'll default to false for now
-    okx: false,
-    bybit: false,
-    kucoin: false,
-    huobi: false
+    // These exchanges don't have boolean fields, so parse from allExchanges
+    okx: allExchangesList.some(e => e.toLowerCase().includes('okx') || e.toLowerCase().includes('okex')),
+    bybit: allExchangesList.some(e => e.toLowerCase().includes('bybit')),
+    kucoin: allExchangesList.some(e => e.toLowerCase().includes('kucoin')),
+    huobi: allExchangesList.some(e => e.toLowerCase().includes('huobi') || e.toLowerCase().includes('htx'))
   };
 
   const coverage = calculateCoverage(exchanges, baseExchange);
-  const allExchanges = parseAllExchanges(raw.all_exchanges);
+  const allExchanges = parseAllExchanges(raw.allExchanges);
 
   return {
     id: raw.id,
@@ -132,15 +233,20 @@ export const processParityRecord = (raw: RawParityRecord, baseExchange: string =
 };
 
 // Calculate coverage overview statistics
-export const calculateCoverageOverview = (tokens: ProcessedParityRecord[]): CoverageOverview => {
+export const calculateCoverageOverview = (tokens: ProcessedParityRecord[], baseExchange: string = 'binance'): CoverageOverview => {
   const totalTokens = tokens.length;
   const tokensMissing = tokens.filter(t => t.isMissing).length;
   
   const totalCoverage = tokens.reduce((sum, token) => sum + token.coveragePercentage, 0);
   const averageCoverage = Math.round(totalCoverage / totalTokens);
 
-  // Find exclusive listings (tokens on only 1-2 exchanges)
-  const exclusiveListings = tokens.filter(t => t.coverageCount <= 2).length;
+  // Find exclusive listings (tokens ONLY on the base exchange)
+  const exclusiveListings = tokens.filter(t => {
+    // Check if token is on base exchange
+    const isOnBase = t.exchanges[baseExchange as keyof typeof t.exchanges] || false;
+    // Token must be on exactly 1 exchange AND that exchange must be the base
+    return t.coverageCount === 1 && isOnBase;
+  }).length;
   const coverageRate = Math.round(((totalTokens - tokensMissing) / totalTokens) * 100);
 
   // Top missing exchanges
@@ -173,7 +279,7 @@ export const calculateCoverageOverview = (tokens: ProcessedParityRecord[]): Cove
 // Process all parity data for dashboard
 export const processParityData = (rawData: RawParityRecord[], baseExchange: string = 'binance'): ParityDashboardData => {
   const tokens = rawData.map(record => processParityRecord(record, baseExchange));
-  const coverageOverview = calculateCoverageOverview(tokens);
+  const coverageOverview = calculateCoverageOverview(tokens, baseExchange);
 
   return {
     coverageOverview,
@@ -261,9 +367,9 @@ export const filterTokensByComparison = (
     // Check if token is on any compare exchanges
     const onAnyCompare = compareExchanges.some(exchange => isOnExchange(exchange));
     
-    // Show tokens where there's a difference:
-    // 1. Missing from primary but available on compare exchanges (listing opportunities)
-    // 2. Available on primary but missing from some compare exchanges (coverage gaps)
-    return (onAnyCompare && !onPrimary) || (onPrimary && !compareExchanges.every(exchange => isOnExchange(exchange)));
+    // New methodology: Show listing opportunities only
+    // What assets are on [compare exchanges] that are NOT on [primary exchange]
+    // Use simple OR logic for compare exchanges
+    return (onAnyCompare && !onPrimary);
   });
 };

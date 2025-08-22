@@ -12,7 +12,7 @@ export interface RawParityRecord {
   isOnMEXC: boolean;
   isOnGate: boolean;
   listing_opportunities: number;
-  all_exchanges: string;
+  allExchanges: string;
   contract_address_ethereum: string;
   contract_address_bsc: string;
   contract_address_polygon: string;

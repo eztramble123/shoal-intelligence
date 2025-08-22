@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession, signOut } from 'next-auth/react'
 import { SharedLayout } from '@/components/shared-layout'
+import { SpinningShoalLogo } from '@/components/spinning-shoal-logo'
 import { Toast } from '@/components/ui/toast'
 import Image from 'next/image'
 
@@ -116,10 +117,9 @@ export default function ProfilePage() {
           display: 'flex',
           justifyContent: 'center',
           alignItems: 'center',
-          height: '100vh',
-          color: '#9ca3af'
+          height: '100vh'
         }}>
-          Loading...
+          <SpinningShoalLogo size={48} />
         </div>
       </SharedLayout>
     )
