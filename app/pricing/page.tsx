@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
+import { SpinningShoalLogo } from '@/components/spinning-shoal-logo'
 
 export default function Pricing() {
   const router = useRouter()
@@ -87,10 +88,9 @@ export default function Pricing() {
         justifyContent: 'center',
         alignItems: 'center',
         height: '100vh',
-        background: '#14151C',
-        color: '#9ca3af'
+        background: '#14151C'
       }}>
-        Loading...
+        <SpinningShoalLogo size={48} />
       </div>
     )
   }

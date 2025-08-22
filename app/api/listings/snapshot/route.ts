@@ -13,7 +13,15 @@ export async function POST(request: Request) {
     
     // Verify authorization
     const authHeader = request.headers.get('authorization');
-    const expectedKey = process.env.CRON_SECRET || 'your-cron-secret';
+    const expectedKey = process.env.CRON_SECRET;
+    
+    if (!expectedKey) {
+      console.error('CRON_SECRET environment variable is required but not set');
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      );
+    }
     
     if (authHeader !== `Bearer ${expectedKey}`) {
       return NextResponse.json(

@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
 import { SharedLayout } from '@/components/shared-layout';
 import { Skeleton } from '@/components/skeleton';
+import { SpinningShoalLogo } from '@/components/spinning-shoal-logo';
 import { ParityDashboardData } from '@/app/types/parity';
 import { FundingDashboardData } from '@/app/types/funding';
 import { ListingsDashboardData } from '@/app/types/listings';
@@ -233,10 +234,9 @@ export default function Dashboard() {
         justifyContent: 'center',
         alignItems: 'center',
         height: '100vh',
-        background: '#14151C',
-        color: '#9ca3af'
+        background: '#14151C'
       }}>
-        Loading...
+        <SpinningShoalLogo size={48} />
       </div>
     );
   }
@@ -299,7 +299,7 @@ export default function Dashboard() {
               
               <div style={{ marginTop: '20px', marginBottom: '30px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div style={{ fontSize: '14px', color: '#ffffff' }}>Coverage Rate</div>
+                  <div style={{ fontSize: '14px', color: '#ffffff' }}>Average Market Coverage</div>
                   <div style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
 {parityLoading ? '...' : parityError ? 'Error' : `${Math.round(parityData?.coverageOverview?.averageCoverage || 0)}%`}
                   </div>
@@ -336,7 +336,7 @@ export default function Dashboard() {
                   e.currentTarget.style.margin = '0';
                 }}
                 >
-                  <span style={{ fontSize: '14px', color: '#ffffff' }}>Missing from {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)}</span>
+                  <span style={{ fontSize: '14px', color: '#ffffff' }}>Opportunities for {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)}</span>
                   <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
 {parityLoading ? '...' : parityError ? '—' : (parityData?.coverageOverview?.tokensMissing || 0)}
                   </span>
@@ -388,7 +388,24 @@ export default function Dashboard() {
                     <span style={{ fontSize: '14px', color: '#ef4444' }}>Unable to load token data</span>
                   </div>
                 ) : (
-                  parityData?.tokens?.slice(0, 2).map((token, index) => (
+                  parityData?.tokens?.filter(token => {
+                    // Only show tokens that are actually missing from the base exchange
+                    const isOnBase = (() => {
+                      switch (baseExchange.toLowerCase()) {
+                        case 'binance': return token.exchanges.binance;
+                        case 'coinbase': return token.exchanges.coinbase;
+                        case 'kraken': return token.exchanges.kraken;
+                        case 'okx': return token.exchanges.okx;
+                        case 'bybit': return token.exchanges.bybit;
+                        case 'kucoin': return token.exchanges.kucoin;
+                        case 'huobi': return token.exchanges.huobi;
+                        case 'gate.io': return token.exchanges.gate;
+                        case 'mexc': return token.exchanges.mexc;
+                        default: return false;
+                      }
+                    })();
+                    return !isOnBase; // Only show tokens NOT on the base exchange
+                  }).slice(0, 2).map((token, index) => (
                     <div key={token.symbol} style={{
                       display: 'flex',
                       justifyContent: 'space-between',
@@ -483,25 +500,6 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
-                  
-                  <div style={{ height: '150px', marginTop: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Skeleton height="100%" width="100%" borderRadius="8px" />
-                  </div>
-                  
-                  <div style={{ marginTop: '20px' }}>
-                    <div style={{ padding: '12px 0', borderBottom: '1px solid #2a2b35' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Skeleton height="14px" width="100px" />
-                        <Skeleton height="14px" width="40px" />
-                      </div>
-                    </div>
-                    <div style={{ padding: '12px 0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Skeleton height="14px" width="80px" />
-                        <Skeleton height="14px" width="50px" />
-                      </div>
-                    </div>
-                  </div>
                 </>
               ) : (
                 <>
@@ -516,7 +514,7 @@ export default function Dashboard() {
                         isGreen: true 
                       },
                       { 
-                        label: 'Active Deals (30d)', 
+                        label: 'Deals Closed (30d)', 
                         value: fundingError ? '—' : (fundingData?.last30Days?.dealCount || 0).toString(), 
                         isGreen: false 
                       },
@@ -555,68 +553,6 @@ export default function Dashboard() {
                       </div>
                     ))}
                   </div>
-                  <div style={{ height: '150px', position: 'relative', marginTop: '20px' }}>
-                    <canvas 
-                      ref={el => { canvasRefs.current.ventureChart = el; }}
-                      id="ventureChart" 
-                      style={{ width: '100%', height: '100%' }}
-                    ></canvas>
-                  </div>
-                  <div style={{ marginTop: '20px' }}>
-                    {fundingError ? (
-                  <div style={{ padding: '12px 0' }}>
-                    <span style={{ fontSize: '14px', color: '#ef4444' }}>Unable to load announcement data</span>
-                  </div>
-                ) : (
-                  (() => {
-                    // Filter for last 90 days
-                    const ninetyDaysAgo = new Date();
-                    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-                    const recent90DayRounds = (fundingData?.latestRounds || [])
-                      .filter(round => round.date >= ninetyDaysAgo)
-                      .slice(0, 2);
-                    
-                    return recent90DayRounds.length > 0 ? (
-                      recent90DayRounds.map((round, index) => (
-                        <div key={index} style={{
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          padding: '12px 0',
-                          borderBottom: index < 1 ? '1px solid #2a2b35' : 'none',
-                          cursor: 'pointer',
-                          transition: 'all 0.3s ease'
-                        }}
-                        onMouseEnter={(e) => {
-                          e.currentTarget.style.background = '#1a1b23';
-                          e.currentTarget.style.paddingLeft = '10px';
-                          e.currentTarget.style.margin = '0 -10px';
-                        }}
-                        onMouseLeave={(e) => {
-                          e.currentTarget.style.background = 'transparent';
-                          e.currentTarget.style.paddingLeft = '0';
-                          e.currentTarget.style.margin = '0';
-                        }}
-                        >
-                          <span style={{ fontSize: '14px', color: '#ffffff' }}>
-                            {round.name}
-                            <span style={{ color: '#9ca3af', fontSize: '12px', marginLeft: '6px' }}>
-                              {round.round}
-                            </span>
-                          </span>
-                          <span style={{ fontSize: '14px', fontWeight: '600', color: '#10b981' }}>
-                            {round.amountDisplay}
-                          </span>
-                        </div>
-                      ))
-                    ) : (
-                      <div style={{ padding: '12px 0' }}>
-                        <span style={{ fontSize: '14px', color: '#9ca3af' }}>No recent announcements</span>
-                      </div>
-                    );
-                  })()
-                )}
-              </div>
               <span style={{
                 display: 'inline-block',
                 marginTop: '16px',

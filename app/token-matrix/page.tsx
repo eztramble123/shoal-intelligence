@@ -3,11 +3,12 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Check, X, Minus, TrendingUp, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import { Check, X, Minus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
 import { SharedLayout } from '@/components/shared-layout';
 import { ParityDashboardData, ProcessedParityRecord } from '@/app/types/parity';
 import { filterTokensByComparison } from '@/app/lib/parity-utils';
 import { CardSkeleton, StatsGridSkeleton, TableSkeleton, Skeleton } from '@/components/skeleton';
+import { SpinningShoalLogo } from '@/components/spinning-shoal-logo';
 import styles from './ExchangeComparison.module.css';
 
 const TokenListingDashboard = () => {
@@ -69,7 +70,10 @@ const TokenListingDashboard = () => {
         const data = await response.json();
         setParityData(data);
         // Set primary exchange from API data, fallback to 'Binance' if not provided
-        setPrimaryExchange(data.baseExchange || 'Binance');
+        const newPrimary = data.baseExchange || 'Binance';
+        setPrimaryExchange(newPrimary);
+        // Ensure the new primary is not in compare exchanges to prevent self-comparison
+        setCompareExchanges(prev => prev.filter(e => e !== newPrimary));
       } catch (error) {
         console.error('Error fetching parity data:', error);
       } finally {
@@ -152,23 +156,58 @@ const TokenListingDashboard = () => {
     return sortTokens(baseFilteredTokens, sortColumn, sortDirection);
   }, [baseFilteredTokens, sortColumn, sortDirection, sortTokens]);
   
+  // Helper function to check if token is on base exchange
+  const isTokenOnBaseExchange = (token: ProcessedParityRecord, baseExchange: string): boolean => {
+    switch (baseExchange.toLowerCase()) {
+      case 'binance': return token.exchanges.binance;
+      case 'coinbase': return token.exchanges.coinbase;
+      case 'kraken': return token.exchanges.kraken;
+      case 'okx': return token.exchanges.okx;
+      case 'bybit': return token.exchanges.bybit;
+      case 'kucoin': return token.exchanges.kucoin;
+      case 'huobi': return token.exchanges.huobi;
+      case 'gate.io': return token.exchanges.gate;
+      case 'mexc': return token.exchanges.mexc;
+      default: return false;
+    }
+  };
+
   // Memoized coverage overview calculation for filtered tokens
   const displayedCoverageOverview = useMemo(() => {
-    if (!parityData || filteredTokens.length === 0) {
-      return parityData?.coverageOverview;
+    if (!parityData) {
+      return undefined;
     }
 
-    // If no compare exchanges selected, show all tokens stats
+    // If no compare exchanges selected, calculate based on base exchange
     if (compareExchanges.length === 0) {
+      const allTokens = parityData.tokens;
+      
+      // MISSING: Tokens NOT on the base exchange
+      const tokensNotOnBase = allTokens.filter(token => !isTokenOnBaseExchange(token, primaryExchange));
+      
+      // COVERAGE: Average coverage for ALL tokens (market average)
+      const totalCoverage = allTokens.reduce((sum, token) => sum + token.coveragePercentage, 0);
+      const averageCoverage = allTokens.length > 0 ? Math.round(totalCoverage / allTokens.length) : 0;
+      
+      return {
+        tokensMissing: tokensNotOnBase.length,
+        totalTokens: allTokens.length,
+        averageCoverage,
+        exclusiveListings: parityData.coverageOverview.exclusiveListings,
+        coverageRate: parityData.coverageOverview.coverageRate,
+        topMissingExchanges: parityData.coverageOverview.topMissingExchanges
+      };
+    }
+
+    // When comparing exchanges, use filtered tokens logic (existing logic)
+    if (filteredTokens.length === 0) {
       return parityData.coverageOverview;
     }
 
-    // Calculate stats for filtered tokens (tokens missing from selected exchanges)
     const totalFiltered = filteredTokens.length;
     const totalCoverage = filteredTokens.reduce((sum, token) => sum + token.coveragePercentage, 0);
     const averageCoverage = totalFiltered > 0 ? Math.round(totalCoverage / totalFiltered) : 0;
     const exclusiveListings = filteredTokens.filter(t => t.coverageCount <= 2).length;
-    // For filtered tokens, coverage rate is the average coverage percentage of the filtered set
     const coverageRate = averageCoverage;
 
     return {
@@ -179,7 +218,44 @@ const TokenListingDashboard = () => {
       coverageRate,
       topMissingExchanges: parityData.coverageOverview.topMissingExchanges
     };
-  }, [parityData, filteredTokens, compareExchanges]);
+  }, [parityData, filteredTokens, compareExchanges, primaryExchange]);
+
+  // Memoized compare card data to prevent hydration issues
+  const compareCardData = useMemo(() => {
+    return compareExchanges.map(exchange => {
+      // Helper function to check if token is on exchange
+      const isOnExchange = (token: ProcessedParityRecord, exchangeName: string) => {
+        switch (exchangeName.toLowerCase()) {
+          case 'binance': return token.exchanges.binance;
+          case 'coinbase': return token.exchanges.coinbase;
+          case 'kraken': return token.exchanges.kraken;
+          case 'okx': return token.exchanges.okx;
+          case 'bybit': return token.exchanges.bybit;
+          case 'kucoin': return token.exchanges.kucoin;
+          case 'huobi': return token.exchanges.huobi;
+          case 'gate.io': return token.exchanges.gate;
+          case 'mexc': return token.exchanges.mexc;
+          default: return false;
+        }
+      };
+
+      // Find exclusive tokens (on this exchange but not on primary)
+      const exclusiveTokens = filteredTokens.filter(token => {
+        const isOnCompare = isOnExchange(token, exchange);
+        const isOnPrimary = isOnExchange(token, primaryExchange);
+        return isOnCompare && !isOnPrimary;
+      });
+
+      // Find top token by market cap
+      const topToken = exclusiveTokens.sort((a, b) => b.marketCap - a.marketCap)[0];
+
+      return {
+        exchange,
+        exclusiveCount: exclusiveTokens.length,
+        topToken
+      };
+    });
+  }, [compareExchanges, filteredTokens, primaryExchange]);
   
   // Pagination
   const totalFilteredTokens = filteredTokens.length;
@@ -190,7 +266,7 @@ const TokenListingDashboard = () => {
   // Memoized selection handlers to prevent re-renders
   const handlePrimarySelection = useCallback((exchange: string) => {
     setPrimaryExchange(exchange);
-    // Remove from compare if it was there
+    // Always remove the new primary exchange from compare exchanges to prevent self-comparison
     setCompareExchanges(prev => prev.filter(e => e !== exchange));
   }, []);
   
@@ -221,10 +297,9 @@ const TokenListingDashboard = () => {
         justifyContent: 'center',
         alignItems: 'center',
         height: '100vh',
-        background: '#14151C',
-        color: '#9ca3af'
+        background: '#14151C'
       }}>
-        Loading...
+        <SpinningShoalLogo size={48} />
       </div>
     );
   }
@@ -359,7 +434,10 @@ const TokenListingDashboard = () => {
               Exchange Comparison
             </h2>
             <p className={styles.subtitle}>
-              Compare listing coverage between exchanges
+              {compareExchanges.length > 0 
+                ? 'Analyzing listing opportunities across selected exchanges'
+                : 'Select exchanges to compare listing opportunities'
+              }
             </p>
 
             {/* Dropdown Controls */}
@@ -597,12 +675,12 @@ const TokenListingDashboard = () => {
                 </h2>
                 {compareExchanges.length > 0 ? (
                   <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
-                    Tokens where <span style={{ color: '#10b981' }}>{primaryExchange}</span> differs from{' '}
-                    <span style={{ color: '#4869EF' }}>{compareExchanges.join(', ')}</span>
+                    Tokens on <span style={{ color: '#4869EF' }}>{compareExchanges.join(', ')}</span> but not on{' '}
+                    <span style={{ color: '#10b981' }}>{primaryExchange}</span>
                   </p>
                 ) : (
                   <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
-                    Exchange coverage statistics
+                    Market-wide statistics for <span style={{ color: '#10b981' }}>{primaryExchange}</span>
                   </p>
                 )}
               </div>
@@ -627,21 +705,14 @@ const TokenListingDashboard = () => {
                   letterSpacing: '0.5px',
                   marginBottom: '6px'
                 }}>
-                  MISSING
+                  {compareExchanges.length > 0 
+                    ? 'OPPORTUNITIES' 
+                    : `MISSING FROM ${primaryExchange.toUpperCase()}`
+                  }
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {displayedCoverageOverview?.tokensMissing || 0}
-                  </span>
-                  <span style={{
-                    fontSize: '11px',
-                    color: compareExchanges.length > 0 ? '#f97316' : '#10b981',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '2px'
-                  }}>
-                    {compareExchanges.length > 0 ? 'filtered' : '+12%'} 
-                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '10px', height: '10px' }} />}
                   </span>
                 </div>
               </div>
@@ -659,7 +730,7 @@ const TokenListingDashboard = () => {
                   letterSpacing: '0.5px',
                   marginBottom: '6px'
                 }}>
-                  {compareExchanges.length > 0 ? 'MATCH' : 'COVERAGE'}
+                  {compareExchanges.length > 0 ? 'OVERLAP' : 'MARKET AVERAGE'}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
@@ -667,9 +738,10 @@ const TokenListingDashboard = () => {
                       if (compareExchanges.length === 0) {
                         return `${displayedCoverageOverview?.averageCoverage || 0}%`;
                       }
-                      // Calculate coverage match percentage between primary and compare exchanges
-                      const totalTokens = filteredTokens.length || 1;
-                      const matchingTokens = filteredTokens.filter(token => {
+                      // Calculate coverage match percentage between primary and compare exchanges using full dataset
+                      const allTokens = parityData?.tokens || [];
+                      const totalTokens = allTokens.length || 1;
+                      const matchingTokens = allTokens.filter(token => {
                         const isOnPrimary = (() => {
                           switch (primaryExchange.toLowerCase()) {
                             case 'binance': return token.exchanges.binance;
@@ -705,16 +777,6 @@ const TokenListingDashboard = () => {
                     })()
                   }
                   </span>
-                  <span style={{
-                    fontSize: '11px',
-                    color: compareExchanges.length > 0 ? '#4869EF' : '#10b981',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '2px'
-                  }}>
-                    {compareExchanges.length > 0 ? 'overlap' : '+2.1%'} 
-                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '10px', height: '10px' }} />}
-                  </span>
                 </div>
               </div>
               
@@ -736,16 +798,6 @@ const TokenListingDashboard = () => {
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {displayedCoverageOverview?.exclusiveListings || 0}
-                  </span>
-                  <span style={{
-                    fontSize: '11px',
-                    color: compareExchanges.length > 0 ? '#f97316' : '#10b981',
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: '2px'
-                  }}>
-                    {compareExchanges.length > 0 ? 'filtered' : '+2.1%'} 
-                    {compareExchanges.length === 0 && <TrendingUp style={{ width: '10px', height: '10px' }} />}
                   </span>
                 </div>
               </div>
@@ -842,7 +894,7 @@ const TokenListingDashboard = () => {
                     backgroundColor: '#10b981'
                   }} />
                   <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
-                    {primaryExchange}
+                    {primaryExchange.charAt(0).toUpperCase() + primaryExchange.slice(1)}
                   </h3>
                   <span style={{
                     fontSize: '10px',
@@ -858,7 +910,7 @@ const TokenListingDashboard = () => {
                 
                 {/* Primary exchange stats */}
                 <div style={{ marginBottom: '12px' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>TOKENS MISSING</div>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>Missing</div>
                   <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {filteredTokens.filter(token => {
                       const isOnPrimary = (() => {
@@ -886,8 +938,8 @@ const TokenListingDashboard = () => {
               </div>
 
               {/* Compare Exchanges Columns */}
-              {compareExchanges.map(exchange => (
-                <div key={exchange} style={{
+              {compareCardData.map(cardData => (
+                <div key={cardData.exchange} style={{
                   background: '#13141a',
                   borderRadius: '8px',
                   padding: '20px',
@@ -906,7 +958,7 @@ const TokenListingDashboard = () => {
                       backgroundColor: '#3b82f6'
                     }} />
                     <h3 style={{ fontSize: '16px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
-                      {exchange}
+                      {cardData.exchange}
                     </h3>
                     <span style={{
                       fontSize: '10px',
@@ -920,33 +972,20 @@ const TokenListingDashboard = () => {
                     </span>
                   </div>
                   
-                  {/* Compare exchange stats */}
-                  <div style={{ marginBottom: '12px' }}>
-                    <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>TOKENS MISSING</div>
-                    <div style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
-                      {filteredTokens.filter(token => {
-                        const isOnCompare = (() => {
-                          switch (exchange.toLowerCase()) {
-                            case 'binance': return token.exchanges.binance;
-                            case 'coinbase': return token.exchanges.coinbase;
-                            case 'kraken': return token.exchanges.kraken;
-                            case 'okx': return token.exchanges.okx;
-                            case 'bybit': return token.exchanges.bybit;
-                            case 'kucoin': return token.exchanges.kucoin;
-                            case 'huobi': return token.exchanges.huobi;
-                            case 'gate.io': return token.exchanges.gate;
-                            case 'mexc': return token.exchanges.mexc;
-                            default: return false;
-                          }
-                        })();
-                        return !isOnCompare;
-                      }).length}
-                    </div>
+                  {/* Top Missing by Market Cap */}
+                  <div>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>Top Missing by Market Cap:</div>
+                    {cardData.topToken ? (
+                      <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '500' }}>
+                        {cardData.topToken.symbol} - {cardData.topToken.marketCapDisplay}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: '14px', color: '#9ca3af' }}>
+                        No exclusive tokens
+                      </div>
+                    )}
                   </div>
                   
-                  <div style={{ fontSize: '12px', color: '#9ca3af' }}>
-                    Missing compared to {primaryExchange}
-                  </div>
                 </div>
               ))}
             </div>
@@ -983,7 +1022,7 @@ const TokenListingDashboard = () => {
                   }).length;
                   
                   if (primaryMissing > 0) {
-                    return `${primaryExchange} could list ${primaryMissing} additional tokens to match competitor coverage.`;
+                    return `${primaryExchange} has ${primaryMissing} listing opportunities from competitor exchanges.`;
                   } else {
                     return `${primaryExchange} has comprehensive coverage of tokens available on compared exchanges.`;
                   }
@@ -1009,12 +1048,17 @@ const TokenListingDashboard = () => {
                 Token Gaps Analysis
               </h2>
               <p style={{ fontSize: '14px', color: '#9ca3af', margin: '4px 0 0 0' }}>
-                Showing {totalFilteredTokens} of {parityData?.totalRecords || 0} tokens
-                {compareExchanges.length > 0 && ` • Comparing ${primaryExchange} vs ${compareExchanges.join(', ')}`}
+                {compareExchanges.length > 0 
+                  ? `Showing ${totalFilteredTokens} listing opportunities: tokens available on ${compareExchanges.join(', ')} but missing from ${primaryExchange}`
+                  : `Showing all ${totalFilteredTokens} tokens with exchange coverage analysis`
+                }
                 {sortColumn && ` • Sorted by ${sortColumn === 'marketCap' ? 'Market Cap' : sortColumn === 'name' ? 'Name' : sortColumn === 'volume' ? 'Volume' : 'Coverage'} (${sortDirection === 'desc' ? 'High to Low' : 'Low to High'})`}
               </p>
               <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0 0', fontStyle: 'italic' }}>
-                Click column headers to sort • Market Cap, Volume, Name, Coverage
+                {compareExchanges.length > 0 
+                  ? 'Click column headers to sort • "MISS" indicates tokens not available on your primary exchange'
+                  : 'Click column headers to sort • "MISS" indicates tokens not available on your base exchange'
+                }
               </p>
             </div>
           </div>
@@ -1029,7 +1073,7 @@ const TokenListingDashboard = () => {
             {/* Table Header */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr',
+              gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr',
               gap: '8px',
               padding: '12px 16px',
               background: '#1a1b23',
@@ -1165,6 +1209,7 @@ const TokenListingDashboard = () => {
               <div style={{ textAlign: 'center' }}>KuCoin</div>
               <div style={{ textAlign: 'center' }}>Huobi</div>
               <div style={{ textAlign: 'center' }}>Gate.io</div>
+              <div style={{ textAlign: 'center' }}>MEXC</div>
               <div 
                 style={{ 
                   textAlign: 'center', 
@@ -1214,7 +1259,7 @@ const TokenListingDashboard = () => {
                   key={token.id} 
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr',
+                    gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr',
                     gap: '8px',
                     padding: '12px 16px',
                     borderBottom: index < paginatedTokens.length - 1 ? '1px solid #2a2b35' : 'none',
@@ -1240,14 +1285,12 @@ const TokenListingDashboard = () => {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            maxWidth: '180px',
-                            cursor: 'help'
+                            maxWidth: '180px'
                           }}
                           title={`${token.name} (${token.symbol})`}
                         >
                           {token.name} ({token.symbol})
                         </span>
-                        {token.rank <= 50 && <TrendingUp style={{ width: '10px', height: '10px', color: '#f97316', flexShrink: 0 }} />}
                       </div>
                       <div style={{ fontSize: '11px', color: '#9ca3af' }}>#{token.rank}</div>
                     </div>
@@ -1310,6 +1353,9 @@ const TokenListingDashboard = () => {
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'center' }}>
                     <ExchangeIcon available={token.exchanges.gate} />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <ExchangeIcon available={token.exchanges.mexc} />
                   </div>
                   <div style={{ textAlign: 'center' }}>
                     <div style={{ fontSize: '12px', fontWeight: '500', color: '#ffffff' }}>
