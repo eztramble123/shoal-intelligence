@@ -137,6 +137,7 @@ export const processListingRecord = (raw: RawListingRecord): ProcessedListingRec
     primaryExchange: raw.exchange,
     listingType: raw.type,
     platforms: raw.platforms,
+    coingeckoUrl: raw.coingecko_url,
     momentum,
     momentumColor: color,
     chartData: generateSparklineData(

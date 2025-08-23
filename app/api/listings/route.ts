@@ -52,15 +52,11 @@ export async function GET(request: Request) {
     
     // Calculate trends if requested
     if (includeTrends) {
-      console.log('=== CALCULATING LISTING TRENDS ===');
-      
       // Calculate trends for different periods
       const [trends30d, trends90d] = await Promise.all([
         calculateListingTrends(30),
         calculateListingTrends(90)
       ]);
-      
-      console.log(`Calculated trends for ${Object.keys(trends30d).length} tickers (30d) and ${Object.keys(trends90d).length} tickers (90d)`);
       
       // Merge trend data with processed listings
       processedData.processedListings = processedData.processedListings.map(listing => {
@@ -88,8 +84,6 @@ export async function GET(request: Request) {
         .filter(listing => listing.trendPercentage !== undefined)
         .sort((a, b) => (b.trendPercentage || 0) - (a.trendPercentage || 0))
         .slice(0, 10);
-      
-      console.log(`Updated ${processedData.trendingListings.length} trending listings`);
     }
     
     return NextResponse.json(processedData);
