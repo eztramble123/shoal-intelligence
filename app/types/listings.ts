@@ -120,6 +120,7 @@ export interface TokenCard {
   lastUpdated: string;
   priceChange: number | null;
   volume: string;
+  coingeckoUrl?: string | null;
 }
 
 // Exchange activity data

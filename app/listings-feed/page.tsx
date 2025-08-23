@@ -154,7 +154,8 @@ const RecentListingsTrackerFeed = () => {
             : `NEW: ${newExchangesList.join(', ')}`,
           lastUpdated: token.listingDateDisplay,
           priceChange: token.priceChangePct24h,
-          volume: token.volume24hDisplay
+          volume: token.volume24hDisplay,
+          coingeckoUrl: token.coingeckoUrl
         };
       })
       .sort((a, b) => b.exchangeCount - a.exchangeCount)
