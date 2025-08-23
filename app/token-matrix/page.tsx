@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Check, X, Minus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown } from 'lucide-react';
+import { Check, X, Minus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ExternalLink } from 'lucide-react';
 import { SharedLayout } from '@/components/shared-layout';
 import { ParityDashboardData, ProcessedParityRecord } from '@/app/types/parity';
 import { filterTokensByComparison } from '@/app/lib/parity-utils';
@@ -170,6 +170,19 @@ const TokenListingDashboard = () => {
       case 'mexc': return token.exchanges.mexc;
       default: return false;
     }
+  };
+
+  // Helper function to generate CoinGecko URL from token symbol
+  const getCoinGeckoUrl = (symbol: string, name: string): string => {
+    // Generate coin ID by using name if available, fallback to symbol
+    const coinId = (name || symbol)
+      .toLowerCase()
+      .replace(/\s+/g, '-')
+      .replace(/[^a-z0-9-]/g, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+    
+    return `https://www.coingecko.com/en/coins/${coinId}`;
   };
 
   // Memoized coverage overview calculation for filtered tokens
@@ -1285,12 +1298,29 @@ const TokenListingDashboard = () => {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             whiteSpace: 'nowrap',
-                            maxWidth: '180px'
+                            maxWidth: '160px'
                           }}
                           title={`${token.name} (${token.symbol})`}
                         >
                           {token.name} ({token.symbol})
                         </span>
+                        <a
+                          href={getCoinGeckoUrl(token.symbol, token.name)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`View ${token.symbol} on CoinGecko`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: '#9ca3af',
+                            transition: 'color 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#d1d5db'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <ExternalLink style={{ width: '12px', height: '12px' }} />
+                        </a>
                       </div>
                       <div style={{ fontSize: '11px', color: '#9ca3af' }}>#{token.rank}</div>
                     </div>

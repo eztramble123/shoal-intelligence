@@ -63,6 +63,7 @@ export interface ProcessedListingRecord {
   primaryExchange?: string; // Primary exchange for this listing event
   listingType?: string; // Listing type (e.g., "Futures", "Spot")
   platforms: Record<string, string>;
+  coingeckoUrl: string | null; // CoinGecko URL from API
   momentum: 'VERY HIGH' | 'HIGH' | 'MEDIUM' | 'LOW' | 'GROWING' | 'DECLINING';
   momentumColor: string;
   chartData: number[];
@@ -82,6 +83,7 @@ export interface LiveListingAlert {
   type: 'SPOT' | 'FUTURES' | 'LISTING';
   status: 'Live' | 'Pending' | 'Failed';
   price: string;
+  coingeckoUrl?: string | null;
   successScore?: number;
   sourceMessage: string;
 }

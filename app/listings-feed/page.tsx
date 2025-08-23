@@ -5,6 +5,7 @@ import { SharedLayout } from '@/components/shared-layout';
 import { Treemap, ResponsiveContainer } from 'recharts';
 import { ListingsDashboardData } from '@/app/types/listings';
 import { CardSkeleton, Skeleton } from '@/components/skeleton';
+import { ExternalLink } from 'lucide-react';
 
 const RecentListingsTrackerFeed = () => {
   const [selectedExchange, setSelectedExchange] = useState('All Exchanges');
@@ -20,6 +21,7 @@ const RecentListingsTrackerFeed = () => {
   useEffect(() => {
     setIsClient(true);
   }, []);
+
 
   // Fetch listings data
   const fetchListingsData = useCallback(async () => {
@@ -256,6 +258,7 @@ const RecentListingsTrackerFeed = () => {
           type: 'SPOT' as const,
           status: 'Live' as const,
           price: token.priceDisplay,
+          coingeckoUrl: token.coingeckoUrl,
           sourceMessage: token.sourceMessage
         };
       });
@@ -762,9 +765,29 @@ const RecentListingsTrackerFeed = () => {
                     gap: '12px',
                     marginBottom: '12px'
                   }}>
-                    <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
-                      {token.symbol}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                        {token.symbol}
+                      </span>
+                      {token.coingeckoUrl && (
+                        <a
+                          href={token.coingeckoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`View ${token.symbol} on CoinGecko`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: '#9ca3af',
+                            transition: 'color 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#d1d5db'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                        >
+                          <ExternalLink style={{ width: '12px', height: '12px' }} />
+                        </a>
+                      )}
+                    </div>
                     <span style={{ fontSize: '14px', color: '#9ca3af' }}>
                       {token.name}
                     </span>
@@ -891,9 +914,29 @@ const RecentListingsTrackerFeed = () => {
                     gap: '12px',
                     marginBottom: '12px'
                   }}>
-                    <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
-                      {token.symbol}
-                    </span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span style={{ fontSize: '16px', fontWeight: '700', color: '#ffffff' }}>
+                        {token.symbol}
+                      </span>
+                      {token.coingeckoUrl && (
+                        <a
+                          href={token.coingeckoUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          aria-label={`View ${token.symbol} on CoinGecko`}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            color: '#9ca3af',
+                            transition: 'color 0.2s ease'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.color = '#d1d5db'}
+                          onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                        >
+                          <ExternalLink style={{ width: '12px', height: '12px' }} />
+                        </a>
+                      )}
+                    </div>
                     <span style={{ fontSize: '14px', color: '#9ca3af' }}>
                       {token.name}
                     </span>
@@ -1365,8 +1408,27 @@ const RecentListingsTrackerFeed = () => {
                 <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '500' }}>
                   {listing.exchange}
                 </div>
-                <div style={{ fontSize: '14px', color: '#ffffff', fontWeight: '600' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '14px', color: '#ffffff', fontWeight: '600' }}>
                   {listing.asset}
+                  {listing.coingeckoUrl && (
+                    <a
+                      href={listing.coingeckoUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`View ${listing.asset} on CoinGecko`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        color: '#9ca3af',
+                        transition: 'color 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => e.currentTarget.style.color = '#d1d5db'}
+                      onMouseLeave={(e) => e.currentTarget.style.color = '#9ca3af'}
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <ExternalLink style={{ width: '12px', height: '12px' }} />
+                    </a>
+                  )}
                 </div>
                 <div style={{ fontSize: '14px', color: '#9ca3af' }}>
                   {listing.name}
