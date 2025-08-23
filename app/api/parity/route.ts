@@ -44,20 +44,6 @@ export async function GET(request: Request) {
     
     const rawData: RawParityRecord[] = await response.json();
     
-    // Debug logging to see actual API data structure
-    console.log('[API DEBUG] Raw data received:', {
-      dataLength: rawData.length,
-      firstToken: rawData[0] ? {
-        symbol: rawData[0].symbol,
-        allExchanges: rawData[0].allExchanges,
-        allExchanges_type: typeof rawData[0].allExchanges,
-        isOnBinance: rawData[0].isOnBinance,
-        isOnCoinbase: rawData[0].isOnCoinbase,
-        // Show all available fields to find what we can use
-        availableFields: Object.keys(rawData[0])
-      } : null
-    });
-    
     // Get user's base exchange preference
     let baseExchange = 'binance'; // default
     if (session?.user?.email) {
@@ -80,15 +66,6 @@ export async function GET(request: Request) {
     // Process the data with base exchange
     const processedData = processParityData(rawData, baseExchange);
     
-    // Debug logging to see processed data
-    console.log('[API DEBUG] Processed data:', {
-      tokensCount: processedData.tokens.length,
-      firstProcessedToken: processedData.tokens[0] ? {
-        symbol: processedData.tokens[0].symbol,
-        exchanges: processedData.tokens[0].exchanges
-      } : null
-    });
-    
     return NextResponse.json({
       ...processedData,
       baseExchange
@@ -99,7 +76,6 @@ export async function GET(request: Request) {
     
     // Return mock data in development if API fails
     if (process.env.NODE_ENV === 'development') {
-      console.log('[API DEBUG] Using mock data due to API failure');
       const mockData = getMockData();
       return NextResponse.json(mockData);
     }
