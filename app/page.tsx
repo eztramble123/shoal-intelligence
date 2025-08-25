@@ -427,7 +427,7 @@ export default function Dashboard() {
                     }}
                     >
                       <span style={{ fontSize: '14px', color: '#ffffff' }}>
-                        {token.symbol} <span style={{ color: '#9ca3af', fontSize: '12px' }}>({token.name})</span>
+                        {token.name} <span style={{ color: '#9ca3af', fontSize: '12px' }}>({token.symbol.toUpperCase()})</span>
                         <span style={{ color: '#ef4444', fontSize: '10px', marginLeft: '6px' }}>• Not on {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)}</span>
                       </span>
                       <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>{token.coverageRatio}</span>
@@ -711,7 +711,7 @@ export default function Dashboard() {
                   }}
                   >
                     <span style={{ fontSize: '14px', color: '#ffffff' }}>
-                      {listing.symbol} <small style={{ color: '#9ca3af' }}>{listing.symbol.replace('$', '')}</small>
+                      {listing.symbol.toUpperCase()}
                     </span>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>{listing.exchanges}</span>
                   </div>
