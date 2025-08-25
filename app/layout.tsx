@@ -16,6 +16,45 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Shoal Intelligence - Crypto Analytics Dashboard",
   description: "Professional crypto analytics dashboard for tracking token listings, venture intelligence, and market coverage",
+  icons: {
+    icon: [
+      { url: '/white_shoal.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: '/white_shoal.svg',
+    apple: [
+      { url: '/white_shoal.svg', type: 'image/svg+xml' },
+    ],
+  },
+  manifest: '/manifest.json',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#ffffff' },
+    { media: '(prefers-color-scheme: dark)', color: '#1a1b1e' },
+  ],
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'Shoal Intelligence',
+  },
+  openGraph: {
+    title: 'Shoal Intelligence - Crypto Analytics Dashboard',
+    description: 'Professional crypto analytics dashboard for tracking token listings, venture intelligence, and market coverage',
+    type: 'website',
+    siteName: 'Shoal Intelligence',
+    images: [
+      {
+        url: '/white_shoal.svg',
+        width: 1200,
+        height: 630,
+        alt: 'Shoal Intelligence Dashboard',
+      },
+    ],
+  },
+  twitter: {
+    card: 'summary_large_image',
+    title: 'Shoal Intelligence - Crypto Analytics Dashboard',
+    description: 'Professional crypto analytics dashboard for tracking token listings, venture intelligence, and market coverage',
+    images: ['/white_shoal.svg'],
+  },
 };
 
 export default function RootLayout({
