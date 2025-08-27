@@ -173,7 +173,7 @@ export default function ComingSoonPage() {
             lineHeight: '1.5',
             marginBottom: '32px'
           }}>
-            We're putting the finishing touches on Shoal Intelligence. Our institutional-grade digital asset platform will be available soon.
+            We&apos;re putting the finishing touches on Shoal Intelligence. Our institutional-grade digital asset platform will be available soon.
           </p>
 
           {/* Email Contact */}

@@ -6,9 +6,6 @@ import Image from 'next/image';
 export default function LandingPage() {
   const router = useRouter();
 
-  const handleLogin = () => {
-    router.push('/coming-soon');
-  };
 
   const handleGetStarted = () => {
     router.push('/coming-soon');
@@ -397,7 +394,7 @@ export default function LandingPage() {
               textTransform: 'uppercase',
               letterSpacing: '1.5px'
             }}>
-              The world's most advanced intelligence platform for analysts and institutional decision-makers, including
+              The world&apos;s most advanced intelligence platform for analysts and institutional decision-makers, including
             </p>
             
             <div style={{
