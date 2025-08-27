@@ -1,654 +1,416 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
-import { SharedLayout } from '@/components/shared-layout';
-import { ParityDashboardData } from '@/app/types/parity';
-import { FundingDashboardData } from '@/app/types/funding';
-import { ListingsDashboardData } from '@/app/types/listings';
+import Image from 'next/image';
 
-export default function Dashboard() {
+export default function LandingPage() {
   const router = useRouter();
-  const canvasRefs = useRef<{ [key: string]: HTMLCanvasElement | null }>({});
-  
-  // Data state
-  const [parityData, setParityData] = useState<ParityDashboardData | null>(null);
-  const [fundingData, setFundingData] = useState<FundingDashboardData | null>(null);
-  const [listingsData, setListingsData] = useState<ListingsDashboardData | null>(null);
-  
-  // Loading states
-  const [parityLoading, setParityLoading] = useState(true);
-  const [fundingLoading, setFundingLoading] = useState(true);
-  const [listingsLoading, setListingsLoading] = useState(true);
-  
-  // Error states
-  const [parityError, setParityError] = useState<string | null>(null);
-  const [fundingError, setFundingError] = useState<string | null>(null);
-  const [listingsError, setListingsError] = useState<string | null>(null);
 
-  // Data fetching functions
-  const fetchParityData = async () => {
-    try {
-      setParityLoading(true);
-      const response = await fetch('/api/parity');
-      if (!response.ok) {
-        throw new Error('Failed to fetch parity data');
-      }
-      const data = await response.json();
-      setParityData(data);
-      setParityError(null);
-    } catch (error) {
-      console.error('Parity data error:', error);
-      setParityError(error instanceof Error ? error.message : 'Failed to fetch parity data');
-    } finally {
-      setParityLoading(false);
-    }
+  const handleLogin = () => {
+    router.push('/coming-soon');
   };
 
-  const fetchFundingData = async () => {
-    try {
-      setFundingLoading(true);
-      const response = await fetch('/api/funding');
-      if (!response.ok) {
-        throw new Error('Failed to fetch funding data');
-      }
-      const data = await response.json();
-      setFundingData(data);
-      setFundingError(null);
-    } catch (error) {
-      console.error('Funding data error:', error);
-      setFundingError(error instanceof Error ? error.message : 'Failed to fetch funding data');
-    } finally {
-      setFundingLoading(false);
-    }
+  const handleGetStarted = () => {
+    router.push('/coming-soon');
   };
 
-  const fetchListingsData = async () => {
-    try {
-      setListingsLoading(true);
-      const response = await fetch('/api/listings');
-      if (!response.ok) {
-        throw new Error('Failed to fetch listings data');
-      }
-      const data = await response.json();
-      setListingsData(data);
-      setListingsError(null);
-    } catch (error) {
-      console.error('Listings data error:', error);
-      setListingsError(error instanceof Error ? error.message : 'Failed to fetch listings data');
-    } finally {
-      setListingsLoading(false);
-    }
+  const handleContactSales = () => {
+    // Could open a modal or navigate to contact form
+    window.location.href = 'mailto:sales@shoalintelligence.com';
   };
-
-  const fetchAllData = useCallback(async () => {
-    await Promise.all([
-      fetchParityData(),
-      fetchFundingData(),
-      fetchListingsData()
-    ]);
-  }, []);
-
-  const drawMiniChart = (canvasId: string, color: string, trend: 'up' | 'down' | 'neutral' = 'neutral') => {
-    const canvas = canvasRefs.current[canvasId];
-    if (!canvas) return;
-    
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    canvas.width = canvas.offsetWidth * 2;
-    canvas.height = canvas.offsetHeight * 2;
-    canvas.style.width = canvas.offsetWidth + 'px';
-    canvas.style.height = canvas.offsetHeight + 'px';
-    ctx.scale(2, 2);
-
-    // Generate random data with trend
-    const points = 50;
-    const data = [];
-    let lastValue = 50;
-    
-    for (let i = 0; i < points; i++) {
-      const change = (Math.random() - 0.5) * 8;
-      const trendFactor = trend === 'up' ? 0.2 : trend === 'down' ? -0.2 : 0;
-      lastValue = Math.max(20, Math.min(80, lastValue + change + trendFactor));
-      data.push(lastValue);
-    }
-
-    // Clear canvas
-    ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
-
-    // Draw the line
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    
-    const stepX = canvas.offsetWidth / (points - 1);
-    data.forEach((value, i) => {
-      const x = i * stepX;
-      const y = canvas.offsetHeight - (value / 100) * canvas.offsetHeight;
-      
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    });
-    
-    ctx.stroke();
-
-    // Add gradient fill for main charts only
-    if (canvasId === 'coverageChart' || canvasId === 'ventureChart') {
-      const gradient = ctx.createLinearGradient(0, 0, 0, canvas.offsetHeight);
-      gradient.addColorStop(0, color + '30');
-      gradient.addColorStop(1, color + '00');
-      
-      ctx.lineTo(canvas.offsetWidth, canvas.offsetHeight);
-      ctx.lineTo(0, canvas.offsetHeight);
-      ctx.closePath();
-      ctx.fillStyle = gradient;
-      ctx.fill();
-    }
-  };
-
-  useEffect(() => {
-    // Initial data fetch
-    fetchAllData();
-    
-    // Set up polling for real-time updates (30 seconds)
-    const pollInterval = setInterval(fetchAllData, 30000);
-    
-    // Initialize charts after a delay
-    const chartTimeout = setTimeout(() => {
-      drawMiniChart('coverageChart', '#10b981', 'up');
-      drawMiniChart('ventureChart', '#3b82f6', 'neutral');
-    }, 1000);
-
-    return () => {
-      clearInterval(pollInterval);
-      clearTimeout(chartTimeout);
-    };
-  }, [fetchAllData]);
-
-  const navigate = (page: string) => {
-    if (page === 'dashboard') {
-      router.push('/');
-    } else {
-      router.push(`/${page}`);
-    }
-  };
-
-
 
   return (
-    <SharedLayout currentPage="dashboard">
-      <div style={{ 
-        padding: '30px',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
+    <div style={{
+      minHeight: '100vh',
+      background: 'linear-gradient(180deg, #0a0b0f 0%, #14151a 100%)',
+      color: '#ffffff',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+      position: 'relative',
+      overflow: 'hidden'
+    }}>
+      {/* Background overlay for data flow effect */}
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'radial-gradient(circle at 30% 50%, rgba(95, 100, 242, 0.1) 0%, transparent 50%)',
+        pointerEvents: 'none'
+      }} />
+      <div style={{
+        position: 'absolute',
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        background: 'radial-gradient(circle at 70% 50%, rgba(95, 100, 242, 0.08) 0%, transparent 50%)',
+        pointerEvents: 'none'
+      }} />
+      {/* Navigation Header */}
+      <header style={{
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        padding: '20px 40px',
+        borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+        position: 'relative',
+        zIndex: 10,
+        width: '100%'
       }}>
-        <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
-          Main Page
-        </h1>
-        <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '30px' }}>
-          Crypto analytics dashboard
-        </p>
-
+        {/* Logo */}
         <div style={{
-          display: 'grid',
-          gridTemplateColumns: '1fr 1fr 1fr',
-          gap: '30px',
-          marginBottom: '30px'
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '18px',
+          fontWeight: '600',
+          letterSpacing: '-0.5px',
+          color: '#F3F4F6'
         }}>
-          {/* Listings Parity Analysis */}
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#ffffff' }}>
-              Listings Parity Analysis
-            </h2>
-            <div style={{
-              background: '#1A1B1E',
-              borderRadius: '12px',
-              padding: '24px',
-              border: '1px solid #212228',
-              transition: 'all 0.3s ease',
-              cursor: 'pointer',
-              height: 'fit-content'
-            }}
-            onClick={() => navigate('token-matrix')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-5px)';
-              e.currentTarget.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.3)';
-              e.currentTarget.style.borderColor = '#3a3b45';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'none';
-              e.currentTarget.style.borderColor = '#212228';
-            }}
-            >
-              <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                Token coverage across major exchanges
-              </div>
-              
-              <div style={{ marginTop: '20px', marginBottom: '30px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div style={{ fontSize: '14px', color: '#ffffff' }}>Coverage Rate</div>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-{parityLoading ? '...' : parityError ? 'Error' : `${Math.round(parityData?.coverageOverview?.averageCoverage || 0)}%`}
-                  </div>
-                </div>
-                <div style={{ flex: 1, background: '#1a1b23', borderRadius: '8px', height: '8px', position: 'relative' }}>
-                  <div style={{ 
-                    width: `${parityLoading ? 0 : Math.round(parityData?.coverageOverview?.averageCoverage || 0)}%`, 
-                    background: '#10b981', 
-                    height: '100%', 
-                    borderRadius: '8px',
-                    transition: 'width 0.3s ease'
-                  }}></div>
-                </div>
-              </div>
-
-              <div style={{ marginBottom: '30px' }}>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 0',
-                  borderBottom: '1px solid #2a2b35',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#1a1b23';
-                  e.currentTarget.style.paddingLeft = '10px';
-                  e.currentTarget.style.margin = '0 -10px';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.paddingLeft = '0';
-                  e.currentTarget.style.margin = '0';
-                }}
-                >
-                  <span style={{ fontSize: '14px', color: '#ffffff' }}>Missing Tokens</span>
-                  <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-{parityLoading ? '...' : parityError ? '—' : (parityData?.coverageOverview?.tokensMissing || 0)}
-                  </span>
-                </div>
-                <div style={{
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  padding: '12px 0',
-                  cursor: 'pointer',
-                  transition: 'all 0.3s ease'
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#1a1b23';
-                  e.currentTarget.style.paddingLeft = '10px';
-                  e.currentTarget.style.margin = '0 -10px';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'transparent';
-                  e.currentTarget.style.paddingLeft = '0';
-                  e.currentTarget.style.margin = '0';
-                }}
-                >
-                  <span style={{ fontSize: '14px', color: '#ffffff' }}>Exclusive Listings</span>
-                  <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-{parityLoading ? '...' : parityError ? '—' : (parityData?.coverageOverview?.exclusiveListings || 0)}
-                  </span>
-                </div>
-              </div>
-
-              <div style={{ marginTop: '30px', paddingTop: '20px', borderTop: '1px solid #2a2b35' }}>
-                {parityLoading ? (
-                  <>
-                    <div style={{ padding: '12px 0', borderBottom: '1px solid #2a2b35' }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>Loading...</span>
-                    </div>
-                    <div style={{ padding: '12px 0' }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>Loading...</span>
-                    </div>
-                  </>
-                ) : parityError ? (
-                  <div style={{ padding: '12px 0' }}>
-                    <span style={{ fontSize: '14px', color: '#ef4444' }}>Unable to load token data</span>
-                  </div>
-                ) : (
-                  parityData?.tokens?.slice(0, 2).map((token, index) => (
-                    <div key={token.symbol} style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center',
-                      padding: '12px 0',
-                      borderBottom: index < 1 ? '1px solid #2a2b35' : 'none',
-                      cursor: 'pointer',
-                      transition: 'all 0.3s ease'
-                    }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.background = '#1a1b23';
-                      e.currentTarget.style.paddingLeft = '10px';
-                      e.currentTarget.style.margin = '0 -10px';
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = 'transparent';
-                      e.currentTarget.style.paddingLeft = '0';
-                      e.currentTarget.style.margin = '0';
-                    }}
-                    >
-                      <span style={{ fontSize: '14px', color: '#ffffff' }}>
-                        {token.symbol} <span style={{ color: '#9ca3af', fontSize: '12px' }}>({token.name})</span>
-                      </span>
-                      <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>{token.coverageRatio}</span>
-                    </div>
-                  )) || (
-                    <div style={{ padding: '12px 0' }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>No token data available</span>
-                    </div>
-                  )
-                )}
-              </div>
-
-              <span style={{
-                display: 'inline-block',
-                marginTop: '16px',
-                color: '#10b981',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(5px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateX(0)'}
-              >
-                View Full Matrix →
-              </span>
-            </div>
-          </div>
-
-          {/* Venture Intelligence */}
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#ffffff' }}>
-              Venture Intelligence
-            </h2>
-            <div style={{
-              background: '#1A1B1E',
-              borderRadius: '12px',
-              padding: '24px',
-              border: '1px solid #212228',
-              transition: 'all 0.3s ease',
-              cursor: 'pointer',
-              height: 'fit-content'
-            }}
-            onClick={() => navigate('venture-intelligence')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-5px)';
-              e.currentTarget.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.3)';
-              e.currentTarget.style.borderColor = '#3a3b45';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'none';
-              e.currentTarget.style.borderColor = '#212228';
-            }}
-            >
-              <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                30-day fundraising activity
-              </div>
-              <div style={{ marginTop: '20px' }}>
-                {[
-                  { 
-                    label: 'Total Raised', 
-                    value: fundingLoading ? '...' : fundingError ? 'Error' : (fundingData?.totalRaised || '$0'), 
-                    isGreen: true 
-                  },
-                  { 
-                    label: 'Active Deals', 
-                    value: fundingLoading ? '...' : fundingError ? '—' : (fundingData?.activeDeals || 0).toString(), 
-                    isGreen: false 
-                  },
-                  { 
-                    label: 'Avg Round', 
-                    value: fundingLoading ? '...' : fundingError ? 'Error' : (fundingData?.avgRoundSize || '$0'), 
-                    isGreen: false 
-                  }
-                ].map((stat, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 0',
-                    borderBottom: index < 2 ? '1px solid #2a2b35' : 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#1a1b23';
-                    e.currentTarget.style.paddingLeft = '10px';
-                    e.currentTarget.style.margin = '0 -10px';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.paddingLeft = '0';
-                    e.currentTarget.style.margin = '0';
-                  }}
-                  >
-                    <span style={{ fontSize: '14px', color: '#ffffff' }}>{stat.label}</span>
-                    <span style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '600',
-                      color: stat.isGreen ? '#10b981' : '#ffffff'
-                    }}>{stat.value}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ height: '150px', position: 'relative', marginTop: '20px' }}>
-                <canvas 
-                  ref={el => { canvasRefs.current.ventureChart = el; }}
-                  id="ventureChart" 
-                  style={{ width: '100%', height: '100%' }}
-                ></canvas>
-              </div>
-              <div style={{ marginTop: '20px' }}>
-                {fundingLoading ? (
-                  <>
-                    <div style={{ padding: '12px 0', borderBottom: '1px solid #2a2b35' }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>Loading investors...</span>
-                    </div>
-                    <div style={{ padding: '12px 0' }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>Loading investors...</span>
-                    </div>
-                  </>
-                ) : fundingError ? (
-                  <div style={{ padding: '12px 0' }}>
-                    <span style={{ fontSize: '14px', color: '#ef4444' }}>Unable to load investor data</span>
-                  </div>
-                ) : (
-                  (fundingData?.mostActiveInvestors?.slice(0, 2) || []).map((investor, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 0',
-                    borderBottom: index < 1 ? '1px solid #2a2b35' : 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#1a1b23';
-                    e.currentTarget.style.paddingLeft = '10px';
-                    e.currentTarget.style.margin = '0 -10px';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.paddingLeft = '0';
-                    e.currentTarget.style.margin = '0';
-                  }}
-                  >
-                    <span style={{ fontSize: '14px', color: '#ffffff' }}>{investor.name}</span>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#10b981' }}>{investor.totalInvestedDisplay}</span>
-                  </div>
-                  )) || (
-                    <div style={{ padding: '12px 0' }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>No investor data available</span>
-                    </div>
-                  )
-                )}
-              </div>
-              <span style={{
-                display: 'inline-block',
-                marginTop: '16px',
-                color: '#10b981',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(5px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateX(0)'}
-              >
-                View Full Report →
-              </span>
-            </div>
-          </div>
-
-          {/* Recent Listings */}
-          <div>
-            <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#ffffff' }}>
-              Recent Listings
-            </h2>
-            <div style={{
-              background: '#1A1B1E',
-              borderRadius: '12px',
-              padding: '24px',
-              border: '1px solid #212228',
-              transition: 'all 0.3s ease',
-              cursor: 'pointer',
-              height: 'fit-content'
-            }}
-            onClick={() => navigate('listings-feed')}
-            onMouseEnter={(e) => {
-              e.currentTarget.style.transform = 'translateY(-5px)';
-              e.currentTarget.style.boxShadow = '0 10px 30px rgba(0, 0, 0, 0.3)';
-              e.currentTarget.style.borderColor = '#3a3b45';
-            }}
-            onMouseLeave={(e) => {
-              e.currentTarget.style.transform = 'translateY(0)';
-              e.currentTarget.style.boxShadow = 'none';
-              e.currentTarget.style.borderColor = '#212228';
-            }}
-            >
-              <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                Live listing activity feed
-              </div>
-              <div style={{ marginTop: '20px' }}>
-                {[
-                  { 
-                    label: 'New Listings (24h)', 
-                    value: listingsLoading ? '...' : listingsError ? '—' : (listingsData?.totalRecords || 0).toString(), 
-                    isGreen: true 
-                  },
-                  { 
-                    label: 'Active Exchanges', 
-                    value: listingsLoading ? '...' : listingsError ? '—' : (listingsData?.adoptionMetrics?.find(m => m.title === 'Active Exchanges')?.value?.toString() || '0'), 
-                    isGreen: false 
-                  },
-                  { 
-                    label: 'Most Listed', 
-                    value: listingsLoading ? '...' : listingsError ? '—' : (listingsData?.fastestGrowing?.[0]?.symbol || 'N/A'), 
-                    isGreen: false 
-                  }
-                ].map((stat, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 0',
-                    borderBottom: '1px solid #2a2b35',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#1a1b23';
-                    e.currentTarget.style.paddingLeft = '10px';
-                    e.currentTarget.style.margin = '0 -10px';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.paddingLeft = '0';
-                    e.currentTarget.style.margin = '0';
-                  }}
-                  >
-                    <span style={{ fontSize: '14px', color: '#ffffff' }}>{stat.label}</span>
-                    <span style={{ 
-                      fontSize: '14px', 
-                      fontWeight: '600',
-                      color: stat.isGreen ? '#10b981' : '#ffffff'
-                    }}>{stat.value}</span>
-                  </div>
-                ))}
-              </div>
-              <div style={{ marginTop: '30px' }}>
-                {listingsLoading ? (
-                  Array.from({ length: 3 }, (_, index) => (
-                    <div key={index} style={{
-                      padding: '12px 0',
-                      borderBottom: index < 2 ? '1px solid #2a2b35' : 'none'
-                    }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>Loading...</span>
-                    </div>
-                  ))
-                ) : listingsError ? (
-                  <div style={{ padding: '12px 0' }}>
-                    <span style={{ fontSize: '14px', color: '#ef4444' }}>Unable to load listing data</span>
-                  </div>
-                ) : (
-                  (listingsData?.fastestGrowing?.slice(0, 3) || []).map((listing, index) => (
-                  <div key={index} style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 0',
-                    borderBottom: index < 2 ? '1px solid #2a2b35' : 'none',
-                    cursor: 'pointer',
-                    transition: 'all 0.3s ease'
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = '#1a1b23';
-                    e.currentTarget.style.paddingLeft = '10px';
-                    e.currentTarget.style.margin = '0 -10px';
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'transparent';
-                    e.currentTarget.style.paddingLeft = '0';
-                    e.currentTarget.style.margin = '0';
-                  }}
-                  >
-                    <span style={{ fontSize: '14px', color: '#ffffff' }}>
-                      {listing.symbol} <small style={{ color: '#9ca3af' }}>{listing.symbol.replace('$', '')}</small>
-                    </span>
-                    <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>{listing.exchanges}</span>
-                  </div>
-                  )) || (
-                    <div style={{ padding: '12px 0' }}>
-                      <span style={{ fontSize: '14px', color: '#9ca3af' }}>No listing data available</span>
-                    </div>
-                  )
-                )}
-              </div>
-              <span style={{
-                display: 'inline-block',
-                marginTop: '16px',
-                color: '#10b981',
-                fontSize: '14px',
-                cursor: 'pointer',
-                transition: 'all 0.3s ease'
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(5px)'}
-              onMouseLeave={(e) => e.currentTarget.style.transform = 'translateX(0)'}
-              >
-                View Live Feed →
-              </span>
-            </div>
-          </div>
+          <Image src="/logo.png" alt="Shoal Intelligence" width={28} height={28} />
+          SHOAL INTELLIGENCE
         </div>
-      </div>
-    </SharedLayout>
+
+        {/* Value Props */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '32px'
+        }}>
+          <span style={{
+            fontSize: '14px',
+            color: '#9CA3AF',
+            fontWeight: '500'
+          }}>
+            Real-time Intelligence
+          </span>
+          <span style={{
+            fontSize: '14px',
+            color: '#9CA3AF',
+            fontWeight: '500'
+          }}>
+            Institutional Grade
+          </span>
+          <span style={{
+            fontSize: '14px',
+            color: '#9CA3AF',
+            fontWeight: '500'
+          }}>
+            Market Surveillance
+          </span>
+        </div>
+
+        {/* CTA Button */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'center'
+        }}>
+          <button
+            onClick={handleGetStarted}
+            style={{
+              padding: '10px 20px',
+              background: 'transparent',
+              border: '1px solid rgba(95, 100, 242, 0.4)',
+              borderRadius: '8px',
+              color: '#5F64F2',
+              fontSize: '14px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(95, 100, 242, 0.1)';
+              e.currentTarget.style.borderColor = '#5F64F2';
+              e.currentTarget.style.transform = 'translateY(-1px)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.borderColor = 'rgba(95, 100, 242, 0.4)';
+              e.currentTarget.style.transform = 'translateY(0)';
+            }}
+          >
+            Early Access
+          </button>
+        </div>
+      </header>
+
+      {/* Hero Section */}
+      <section style={{
+        padding: '40px 40px 60px',
+        textAlign: 'center',
+        position: 'relative',
+        minHeight: 'calc(100vh - 70px)'
+      }}>
+        {/* Background image covering entire section */}
+        <div style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundImage: 'url(/mainbg.png)',
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat',
+          opacity: 0.3,
+          zIndex: 0,
+          pointerEvents: 'none'
+        }} />
+        
+        {/* Content wrapper with higher z-index */}
+        <div style={{ position: 'relative', zIndex: 1 }}>
+          {/* Tagline Badge */}
+          <div style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '8px',
+            padding: '8px 16px',
+            background: '#1F2937',
+            border: '1px solid rgba(255, 255, 255, 0.08)',
+            borderRadius: '100px',
+            marginBottom: '24px'
+          }}>
+            <span style={{
+              width: '8px',
+              height: '8px',
+              background: '#10B981',
+              borderRadius: '50%',
+              display: 'inline-block'
+            }}></span>
+            <span style={{
+              fontSize: '14px',
+              color: '#ffffff',
+              fontWeight: '500'
+            }}>
+              Enterprise-Ready Intelligence Platform • 500 Founding Analysts
+            </span>
+          </div>
+
+          {/* Main Headline */}
+          <h1 style={{
+            fontSize: '52px',
+            fontWeight: '700',
+            lineHeight: '1.1',
+            marginBottom: '20px',
+            letterSpacing: '-1px',
+            background: 'linear-gradient(180deg, #ffffff 0%, #9ca3af 100%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            Institutional-Grade<br />
+            Digital Asset Intelligence
+          </h1>
+
+          {/* Subtitle */}
+          <p style={{
+            fontSize: '18px',
+            color: '#D1D5DB',
+            lineHeight: '1.4',
+            maxWidth: '600px',
+            margin: '0 auto 30px'
+          }}>
+            Track digital asset listings, competitive intelligence, research and news powering decision making.
+          </p>
+
+          {/* CTA Button */}
+          <button
+            onClick={handleGetStarted}
+            style={{
+              padding: '12px 28px',
+              background: '#5F64F2',
+              border: 'none',
+              borderRadius: '8px',
+              color: '#ffffff',
+              fontSize: '15px',
+              fontWeight: '600',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              marginBottom: '20px'
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = '#818CF8';
+              e.currentTarget.style.transform = 'translateY(-2px)';
+              e.currentTarget.style.boxShadow = '0 8px 24px rgba(95, 100, 242, 0.4)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = '#5F64F2';
+              e.currentTarget.style.transform = 'translateY(0)';
+              e.currentTarget.style.boxShadow = 'none';
+            }}
+          >
+            Apply for Access
+          </button>
+
+          {/* Enterprise Link */}
+          <div style={{
+            fontSize: '14px',
+            color: '#E5E7EB'
+          }}>
+            Looking for an enterprise solution?{' '}
+            <a
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                handleContactSales();
+              }}
+              style={{
+                color: '#ffffff',
+                textDecoration: 'underline',
+                cursor: 'pointer',
+                transition: 'color 0.2s ease'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.color = '#5F64F2'}
+              onMouseLeave={(e) => e.currentTarget.style.color = '#ffffff'}
+            >
+              Contact Sales
+            </a>
+          </div>
+
+          {/* Stats Section - Floating within hero */}
+          <div style={{
+            maxWidth: '1200px',
+            margin: '60px auto 0',
+            display: 'grid',
+            gridTemplateColumns: 'repeat(4, 1fr)',
+            gap: '40px',
+            position: 'relative',
+            zIndex: 1
+          }}>
+            {/* Stat 1 */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: '36px',
+                fontWeight: '700',
+                marginBottom: '4px',
+                color: '#5F64F2'
+              }}>
+                $2.8B
+              </div>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: '600',
+                marginBottom: '2px',
+                color: '#D1D5DB'
+              }}>
+                Assets Tracked
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: '#9CA3AF'
+              }}>
+                Institutional portfolios monitored
+              </div>
+            </div>
+
+            {/* Stat 2 */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: '36px',
+                fontWeight: '700',
+                marginBottom: '4px',
+                color: '#5F64F2'
+              }}>
+                500+
+              </div>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: '600',
+                marginBottom: '2px',
+                color: '#D1D5DB'
+              }}>
+                Daily Insights
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: '#9CA3AF'
+              }}>
+                Market signals and alerts
+              </div>
+            </div>
+
+            {/* Stat 3 */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: '36px',
+                fontWeight: '700',
+                marginBottom: '4px',
+                color: '#5F64F2'
+              }}>
+                24/7
+              </div>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: '600',
+                marginBottom: '2px',
+                color: '#D1D5DB'
+              }}>
+                Monitoring
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: '#9CA3AF'
+              }}>
+                Real-time market surveillance
+              </div>
+            </div>
+
+            {/* Stat 4 */}
+            <div style={{ textAlign: 'center' }}>
+              <div style={{
+                fontSize: '36px',
+                fontWeight: '700',
+                marginBottom: '4px',
+                color: '#5F64F2'
+              }}>
+                100+
+              </div>
+              <div style={{
+                fontSize: '14px',
+                fontWeight: '600',
+                marginBottom: '2px',
+                color: '#D1D5DB'
+              }}>
+              Data Sources
+              </div>
+              <div style={{
+                fontSize: '12px',
+                color: '#9CA3AF'
+              }}>
+                Exchanges, news, and analytics
+              </div>
+            </div>
+          </div>
+
+          {/* Partners Section - Also in hero */}
+          <div style={{
+            marginTop: '60px',
+            textAlign: 'center',
+            position: 'relative',
+            zIndex: 1
+          }}>
+            <p style={{
+              fontSize: '12px',
+              color: '#9CA3AF',
+              marginBottom: '24px',
+              textTransform: 'uppercase',
+              letterSpacing: '1.5px'
+            }}>
+              The world's most advanced intelligence platform for analysts and institutional decision-makers, including
+            </p>
+            
+            <div style={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              opacity: '0.6'
+            }}>
+              <Image src="/image.png" alt="Partner Companies" width={600} height={80} />
+            </div>
+          </div>
+        </div> {/* End of content wrapper */}
+      </section>
+    </div>
   );
 }

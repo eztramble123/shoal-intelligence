@@ -15,7 +15,7 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
 
   const navigate = (page: string) => {
     if (page === 'dashboard') {
-      router.push('/');
+      router.push('/dashboard');
     } else {
       router.push(`/${page}`);
     }
