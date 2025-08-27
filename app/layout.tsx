@@ -15,6 +15,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Shoal Intelligence - Crypto Analytics Dashboard",
   description: "Professional crypto analytics dashboard for tracking token listings, venture intelligence, and market coverage",
+  icons: {
+    icon: '/logo.png',
+  },
 };
 
 export default function RootLayout({
