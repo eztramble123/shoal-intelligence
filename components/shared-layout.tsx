@@ -111,6 +111,143 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
               <Image src={item.icon} alt={item.label} width={16} height={16} />
             </div>
           ))}
+
+          {/* Spacer to push social links to bottom */}
+          <div style={{ flex: 1 }} />
+
+          {/* Social Links Section */}
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            paddingTop: '20px',
+            borderTop: '1px solid #2a2b35',
+            marginTop: '20px'
+          }}>
+            {/* Twitter Main */}
+            <a
+              href="https://x.com/Shoalresearch"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '12px',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                transition: 'all 0.3s ease',
+                textDecoration: 'none',
+                opacity: 0.7
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#1a1b23';
+                e.currentTarget.style.opacity = '1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.opacity = '0.7';
+              }}
+              title="Shoal Research Twitter"
+            >
+              <Image src="/twitter.png" alt="Twitter" width={18} height={18} style={{ filter: 'invert(1)' }} />
+            </a>
+
+            {/* Substack */}
+            <a
+              href="https://www.shoal.gg/"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '12px',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                transition: 'all 0.3s ease',
+                textDecoration: 'none',
+                opacity: 0.7
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#1a1b23';
+                e.currentTarget.style.opacity = '1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.opacity = '0.7';
+              }}
+              title="Shoal Research Website"
+            >
+              <Image src="/substack.svg" alt="Website" width={18} height={18} />
+            </a>
+
+            {/* Telegram */}
+            <a
+              href="https://t.me/shoalresearch"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '12px',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                transition: 'all 0.3s ease',
+                textDecoration: 'none',
+                opacity: 0.7
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#1a1b23';
+                e.currentTarget.style.opacity = '1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.opacity = '0.7';
+              }}
+              title="Shoal Research Telegram"
+            >
+              <Image src="/telegram.svg" alt="Telegram" width={18} height={18} />
+            </a>
+
+            {/* Twitter News Feed */}
+            <a
+              href="https://x.com/shoalfeed"
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                width: '32px',
+                height: '32px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                marginBottom: '12px',
+                cursor: 'pointer',
+                borderRadius: '6px',
+                transition: 'all 0.3s ease',
+                textDecoration: 'none',
+                opacity: 0.7
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = '#1a1b23';
+                e.currentTarget.style.opacity = '1';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.opacity = '0.7';
+              }}
+              title="Shoal Feed Twitter"
+            >
+              <Image src="/icons/newspaper.png" alt="Twitter Feed" width={18} height={18} />
+            </a>
+          </div>
         </div>
 
         {/* Main Content */}

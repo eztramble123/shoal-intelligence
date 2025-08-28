@@ -1,8 +1,44 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
-import { processListingsData, calculateListingTrends } from '@/app/lib/listings-utils';
-import { RawListingRecord } from '@/app/types/listings';
+import { processListingsData, calculateListingTrends, filterNewListings } from '@/app/lib/listings-utils';
+import { RawListingRecord, ListingsDashboardData } from '@/app/types/listings';
+
+// Apply period-specific filtering to focus data on the requested time range
+function applyPeriodFilter(data: ListingsDashboardData, period: string): ListingsDashboardData {
+  // Get the period-specific data based on the request
+  let filteredListings;
+  let periodData;
+  
+  switch (period) {
+    case '30d':
+      filteredListings = data.last30Days.newListings;
+      periodData = data.last30Days;
+      break;
+    case '90d':
+      filteredListings = data.last90Days.newListings;
+      periodData = data.last90Days;
+      break;
+    case 'ytd':
+      filteredListings = data.yearToDate.newListings;
+      periodData = data.yearToDate;
+      break;
+    default:
+      filteredListings = data.last30Days.newListings;
+      periodData = data.last30Days;
+  }
+  
+  // Return data with the primary listings replaced by period-filtered data
+  return {
+    ...data,
+    processedListings: filteredListings, // Replace with period-specific data
+    totalRecords: filteredListings.length,
+    // Keep the period data intact
+    last30Days: data.last30Days,
+    last90Days: data.last90Days,
+    yearToDate: data.yearToDate
+  };
+}
 
 export async function GET(request: Request) {
   try {
@@ -18,6 +54,7 @@ export async function GET(request: Request) {
     // Get query parameters
     const url = new URL(request.url);
     const includeTrends = url.searchParams.get('trends') === 'true';
+    const period = url.searchParams.get('period') || '30d';
 
     // Get environment variables
     const apiKey = process.env.BLAKE_API_KEY;
@@ -50,6 +87,9 @@ export async function GET(request: Request) {
     // Process the data using Retool-style logic
     const processedData = processListingsData(rawData);
     
+    // Apply period filtering to focus on the requested time range
+    const periodFilteredData = applyPeriodFilter(processedData, period);
+    
     // Calculate trends if requested
     if (includeTrends) {
       // Calculate trends for different periods
@@ -59,7 +99,7 @@ export async function GET(request: Request) {
       ]);
       
       // Merge trend data with processed listings
-      processedData.processedListings = processedData.processedListings.map(listing => {
+      periodFilteredData.processedListings = periodFilteredData.processedListings.map(listing => {
         const trend30 = trends30d[listing.ticker];
         const trend90 = trends90d[listing.ticker];
         
@@ -80,13 +120,13 @@ export async function GET(request: Request) {
       });
       
       // Update trending listings with the most positive trends
-      processedData.trendingListings = processedData.processedListings
+      periodFilteredData.trendingListings = periodFilteredData.processedListings
         .filter(listing => listing.trendPercentage !== undefined)
         .sort((a, b) => (b.trendPercentage || 0) - (a.trendPercentage || 0))
         .slice(0, 10);
     }
     
-    return NextResponse.json(processedData);
+    return NextResponse.json(periodFilteredData);
     
   } catch (error) {
     console.error('Listings API error:', error);

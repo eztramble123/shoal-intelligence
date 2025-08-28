@@ -6,6 +6,9 @@ import { Treemap, ResponsiveContainer } from 'recharts';
 import { ListingsDashboardData } from '@/app/types/listings';
 import { CardSkeleton, Skeleton } from '@/components/skeleton';
 import { ExternalLink } from 'lucide-react';
+import ErrorBoundary, { DashboardErrorFallback } from '@/components/error-boundary';
+import { ErrorState } from '@/components/error-states';
+import { withRetry, isNetworkError } from '@/lib/error-utils';
 
 const RecentListingsTrackerFeed = () => {
   const [selectedExchange, setSelectedExchange] = useState('All Exchanges');
@@ -23,19 +26,39 @@ const RecentListingsTrackerFeed = () => {
   }, []);
 
 
-  // Fetch listings data
+  // Enhanced fetch listings data with retry logic and better error handling
   const fetchListingsData = useCallback(async () => {
     try {
-      const response = await fetch(`/api/listings?period=${selectedPeriod}&trends=true`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch listings data');
-      }
-      const data = await response.json();
-      setListingsData(data);
       setError(null);
+      
+      const data = await withRetry(async () => {
+        const response = await fetch(`/api/listings?period=${selectedPeriod}&trends=true`, {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}: Failed to fetch listings data`);
+        }
+        
+        return response.json();
+      }, 3, 1000);
+      
+      setListingsData(data);
     } catch (err) {
       console.error('Error fetching listings data:', err);
-      setError('Failed to load listings data');
+      
+      if (isNetworkError(err)) {
+        setError('Network connection failed. Please check your internet connection and try again.');
+      } else if (err instanceof Error && err.message.includes('timeout')) {
+        setError('Request timed out. The service might be experiencing high load.');
+      } else if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('Failed to load listings data. Please try again.');
+      }
     } finally {
       setLoading(false);
     }
@@ -91,99 +114,50 @@ const RecentListingsTrackerFeed = () => {
       };
     }
     
-    // Use period-specific listings for all displays
-    const periodListings = periodData.newListings || [];
+    // Use period-specific listings - backend has already processed and grouped by token
+    // Each token in periodListings already has the correct exchange count for the period
+    const periodListings = periodData.newListings ?? [];
     
-    // Generate token cards based on actual new exchange listings in the selected period
-    // Calculate period start date
-    const periodStartDate = new Date();
-    if (selectedPeriod === 'ytd') {
-      periodStartDate.setMonth(0, 1); // January 1st
-      periodStartDate.setHours(0, 0, 0, 0);
-    } else {
-      const days = parseInt(selectedPeriod.replace('d', ''));
-      periodStartDate.setDate(periodStartDate.getDate() - days);
-    }
+    // Convert the backend-processed data directly to token cards
+    const tokenCards = periodListings
+      .sort((a, b) => b.exchangesCount - a.exchangesCount) // Sort by period-specific exchange count
+      .slice(0, 8)
+      .map(token => ({
+        symbol: token.ticker,
+        name: token.name,
+        exchanges: token.exchanges, // Already contains period-specific exchanges
+        exchangeCount: token.exchangesCount, // Already contains period-specific count
+        adoption24h: `+${token.exchangesCount} exchange${token.exchangesCount !== 1 ? 's' : ''}`,
+        momentum: token.momentum,
+        momentumColor: token.momentumColor,
+        listedOn: token.exchangesCount === 1 
+          ? `NEW: ${token.exchanges[0] || 'Unknown'}`
+          : `NEW: ${token.exchanges.join(', ')}`,
+        lastUpdated: token.listingDateDisplay,
+        priceChange: token.priceChangePct24h,
+        volume: token.volume24hDisplay,
+        coingeckoUrl: token.coingeckoUrl
+      }));
     
-    // Filter listings that actually happened in the selected period
-    const recentListings = listingsData?.processedListings?.filter(token => {
-      const listingDate = token.listingDate instanceof Date ? token.listingDate : new Date(token.listingDate);
-      return listingDate >= periodStartDate;
-    }) || [];
-    
-    // Group by token and count unique exchanges for new listings
-    const tokenExchangeActivity: Record<string, {
-      token: typeof recentListings[0];
-      newExchanges: Set<string>;
-      listingEvents: typeof recentListings;
-    }> = {};
-    
-    recentListings.forEach(listing => {
-      if (!tokenExchangeActivity[listing.ticker]) {
-        tokenExchangeActivity[listing.ticker] = {
-          token: listing,
-          newExchanges: new Set(),
-          listingEvents: []
-        };
-      }
-      
-      // Add the primary exchange for this listing event
-      if (listing.primaryExchange) {
-        tokenExchangeActivity[listing.ticker].newExchanges.add(listing.primaryExchange);
-      }
-      tokenExchangeActivity[listing.ticker].listingEvents.push(listing);
-    });
-    
-    // Convert to token cards sorted by most new exchange activity
-    const tokenCards = Object.values(tokenExchangeActivity)
-      .map(item => {
-        const token = item.token;
-        const newExchangeCount = item.newExchanges.size;
-        const newExchangesList = Array.from(item.newExchanges);
-        
-        return {
-          symbol: token.ticker,
-          name: token.name,
-          exchanges: newExchangesList,
-          exchangeCount: newExchangeCount,
-          adoption24h: `+${newExchangeCount} exchange${newExchangeCount !== 1 ? 's' : ''}`,
-          momentum: token.momentum,
-          momentumColor: token.momentumColor,
-          listedOn: newExchangeCount === 1 
-            ? `NEW: ${newExchangesList[0]}`
-            : `NEW: ${newExchangesList.join(', ')}`,
-          lastUpdated: token.listingDateDisplay,
-          priceChange: token.priceChangePct24h,
-          volume: token.volume24hDisplay,
-          coingeckoUrl: token.coingeckoUrl
-        };
-      })
-      .sort((a, b) => b.exchangeCount - a.exchangeCount)
-      .slice(0, 8);
-    
-    // Generate treemap data based on new exchange activity in the period
-    const treemapData = Object.values(tokenExchangeActivity)
-      .map(item => {
-        const token = item.token;
-        const newExchangeCount = item.newExchanges.size;
-        
-        return {
-          name: token.ticker,
-          value: newExchangeCount,
-          size: newExchangeCount * 10, // Scale for visualization
-          fill: token.momentumColor,
-          changeType: token.priceChangePct24h && token.priceChangePct24h > 0 ? 'positive' as const : 
-                      token.priceChangePct24h && token.priceChangePct24h < 0 ? 'negative' as const : 'neutral' as const,
-          chartData: token.chartData,
-          ticker: token.ticker,
-          exchangesCount: newExchangeCount
-        };
-      })
-      .filter(item => item.value > 0) // Only show tokens with new exchange activity
-      .sort((a, b) => b.value - a.value)
-      .slice(0, 20);
+    // Generate treemap data based on period-specific exchange counts
+    const treemapData = periodListings
+      .filter(token => token.exchangesCount > 0) // Only show tokens with exchange activity in the period
+      .sort((a, b) => b.exchangesCount - a.exchangesCount)
+      .slice(0, 20)
+      .map(token => ({
+        name: token.ticker,
+        value: token.exchangesCount,
+        size: token.exchangesCount * 10, // Scale for visualization
+        fill: token.momentumColor,
+        changeType: token.priceChangePct24h && token.priceChangePct24h > 0 ? 'positive' as const : 
+                    token.priceChangePct24h && token.priceChangePct24h < 0 ? 'negative' as const : 'neutral' as const,
+        chartData: token.chartData,
+        ticker: token.ticker,
+        exchangesCount: token.exchangesCount
+      }));
     
     // Calculate exchange activity from last 24 hours only (not period-specific)
+    // This should use the full dataset since it's specifically for 24-hour activity tracking
     const twentyFourHoursAgo = new Date();
     twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
     
@@ -195,7 +169,7 @@ const RecentListingsTrackerFeed = () => {
     const exchangeCount: Record<string, number> = {};
     last24HourListings.forEach(token => {
       token.exchanges.forEach(exchange => {
-        exchangeCount[exchange] = (exchangeCount[exchange] || 0) + 1;
+        exchangeCount[exchange] = (exchangeCount[exchange] ?? 0) + 1;
       });
     });
     
@@ -207,11 +181,12 @@ const RecentListingsTrackerFeed = () => {
     // Fastest growing based on trend data
     const fastestGrowing = periodListings
       .filter(token => token.trendPercentage !== undefined && token.trendPercentage > 0)
-      .sort((a, b) => (b.trendPercentage || 0) - (a.trendPercentage || 0))
+      .filter(token => token.trendPercentage && !isNaN(Number(token.trendPercentage)))
+      .sort((a, b) => Number(b.trendPercentage) - Number(a.trendPercentage))
       .slice(0, 4)
       .map(token => ({
         symbol: token.ticker,
-        exchanges: token.trendDisplay || `+${token.exchangesCount} exchanges`,
+        exchanges: token.trendDisplay ?? `+${token.exchangesCount} exchanges`,
         status: 'up' as const
       }));
     
@@ -233,7 +208,7 @@ const RecentListingsTrackerFeed = () => {
         
         return {
           symbol: token.ticker,
-          exchange: `on ${token.exchanges[0] || 'Unknown'}`,
+          exchange: `on ${token.exchanges[0] ?? 'Unknown'}`,
           time: timeDisplay
         };
       });
@@ -253,7 +228,7 @@ const RecentListingsTrackerFeed = () => {
         
         return {
           timestamp,
-          exchange: token.exchanges[0] || 'Unknown',
+          exchange: token.exchanges[0] ?? 'Unknown',
           asset: token.ticker,
           name: token.name,
           type: 'SPOT' as const,
@@ -278,17 +253,20 @@ const RecentListingsTrackerFeed = () => {
   
   // Generate adoption metrics from period data
   const adoptionMetrics = periodData ? [
-    { title: `New Listings (${selectedPeriod.toUpperCase()})`, value: periodData.totalNewListings || 0 },
+    { 
+      title: `New Listings (${selectedPeriod.toUpperCase()})`, 
+      value: periodData.totalNewListings ?? 'No data'
+    },
     { 
       title: 'Top New Listing', 
       value: periodData.topNewListings?.[0] ? 
-        `${periodData.topNewListings[0].symbol || periodData.topNewListings[0].ticker} (${periodData.topNewListings[0].exchangesCount} exchanges)` : 
-        'N/A' 
+        `${periodData.topNewListings[0].symbol ?? periodData.topNewListings[0].ticker} (${periodData.topNewListings[0].exchangesCount} exchanges)` : 
+        'No data' 
     },
     { title: 'Period Coverage', value: selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}` }
   ] : [
-    { title: `New Listings (${selectedPeriod.toUpperCase()})`, value: '—' },
-    { title: 'Top New Listing', value: '—' },
+    { title: `New Listings (${selectedPeriod.toUpperCase()})`, value: 'No data' },
+    { title: 'Top New Listing', value: 'No data' },
     { title: 'Period Coverage', value: selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}` }
   ];
 
@@ -306,7 +284,7 @@ const RecentListingsTrackerFeed = () => {
     };
   }) => {
     const { x, y, width, height, name, value, fill, payload } = props;
-    const chartData = payload?.chartData || [];
+    const chartData = payload?.chartData ?? [];
     
     // Create sparkline points for the chart
     const createSparklinePoints = (data: number[]) => {
@@ -369,7 +347,7 @@ const RecentListingsTrackerFeed = () => {
               fontWeight="700"
               style={{ fill: 'white' }}
             >
-              {payload?.exchangesCount || Math.floor(value / 10)}
+              {payload?.exchangesCount ?? (value ? Math.floor(Number(value) / 10) : 0)}
             </text>
             
             {/* Exchanges label */}
@@ -432,7 +410,7 @@ const RecentListingsTrackerFeed = () => {
               fontWeight="700"
               style={{ fill: 'white' }}
             >
-              {payload?.exchangesCount || Math.floor(value / 10)}
+              {payload?.exchangesCount ?? (value ? Math.floor(Number(value) / 10) : 0)}
             </text>
           </>
         )}
@@ -602,10 +580,17 @@ const RecentListingsTrackerFeed = () => {
       <SharedLayout currentPage="listings-feed">
         <div style={{
           padding: '30px',
-          textAlign: 'center',
-          color: '#ef4444'
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          minHeight: '60vh'
         }}>
-          {error}
+          <ErrorState
+            error={error}
+            onRetry={fetchListingsData}
+            retryLabel="Reload Listings"
+            variant="default"
+          />
         </div>
       </SharedLayout>
     );
@@ -725,12 +710,13 @@ const RecentListingsTrackerFeed = () => {
         </div>
 
         {/* Adoption Map Section */}
+        <ErrorBoundary fallback={DashboardErrorFallback}>
         <div style={{ marginBottom: '40px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#ffffff' }}>
             Adoption Map ({selectedPeriod.toUpperCase()})
           </h2>
           <p style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-            Tokens with Most New Exchange Listings - {selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}`}
+            Tokens Listed on Most Exchanges - {selectedPeriod === 'ytd' ? 'Year to Date' : `Last ${selectedPeriod.replace('d', ' days')}`}
           </p>
 
           {/* Token Cards Grid */}
@@ -792,8 +778,8 @@ const RecentListingsTrackerFeed = () => {
                     <span style={{ fontSize: '14px', color: '#9ca3af' }}>
                       {token.name}
                     </span>
-                    <span style={{ fontSize: '14px', color: '#9ca3af' }}>
-                      • {token.exchangeCount} exchanges
+                    <span style={{ fontSize: '14px', color: '#10b981', fontWeight: '600' }}>
+                      • {token.exchangeCount} {token.exchangeCount === 1 ? 'exchange' : 'exchanges'}
                     </span>
                   </div>
                   <div style={{ marginBottom: '12px' }}>
@@ -1060,8 +1046,10 @@ const RecentListingsTrackerFeed = () => {
             </div>
           </div>
         </div>
+        </ErrorBoundary>
 
         {/* Metrics Row */}
+        <ErrorBoundary fallback={DashboardErrorFallback}>
         <div style={{
           display: 'grid',
           gridTemplateColumns: 'repeat(2, 1fr)',
@@ -1129,8 +1117,10 @@ const RecentListingsTrackerFeed = () => {
             </div>
           </div>
         </div>
+        </ErrorBoundary>
 
         {/* Live Listings Feed */}
+        <ErrorBoundary fallback={DashboardErrorFallback}>
         <div style={{
           background: '#1A1B1E',
           borderRadius: '12px',
@@ -1467,6 +1457,7 @@ const RecentListingsTrackerFeed = () => {
             ))}
           </div>
         </div>
+        </ErrorBoundary>
       </div>
     </SharedLayout>
   );
