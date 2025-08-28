@@ -44,14 +44,8 @@ export const ErrorState: React.FC<ErrorStateProps> = ({
 }) => {
   if (!error) return null;
 
-  // Parse error
-  const errorMessage = typeof error === 'string' 
-    ? error 
-    : error instanceof Error 
-    ? error.message 
-    : 'message' in error 
-    ? error.message 
-    : 'An unexpected error occurred';
+  // Always show the same simple error message
+  const errorMessage = 'Service Error, check back later';
 
   const errorType = typeof error === 'object' && error && 'type' in error 
     ? error.type 

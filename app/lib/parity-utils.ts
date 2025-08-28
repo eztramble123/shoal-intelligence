@@ -333,6 +333,11 @@ export const filterTokensByComparison = (
   compareExchanges: string[],
   searchQuery: string
 ): ProcessedParityRecord[] => {
+  // Add null safety guard
+  if (!tokens || !Array.isArray(tokens)) {
+    return [];
+  }
+  
   return tokens.filter(token => {
     // Search filter
     if (searchQuery && searchQuery.trim() !== '') {

@@ -21,7 +21,7 @@ export async function GET(request: Request) {
     
     if (!apiKey) {
       return NextResponse.json(
-        { error: 'API configuration missing' },
+        { error: 'API configuration missing. Please check BLAKE_API_KEY environment variable.' },
         { status: 500 }
       );
     }
@@ -39,7 +39,7 @@ export async function GET(request: Request) {
     });
     
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
+      throw new Error(`Blake AI Parity API request failed with status ${response.status}: ${response.statusText}`);
     }
     
     const rawData: RawParityRecord[] = await response.json();
@@ -74,14 +74,10 @@ export async function GET(request: Request) {
   } catch (error) {
     console.error('Parity API error:', error);
     
-    // Return mock data in development if API fails
-    if (process.env.NODE_ENV === 'development') {
-      const mockData = getMockData();
-      return NextResponse.json(mockData);
-    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while fetching parity data';
     
     return NextResponse.json(
-      { error: 'Failed to fetch parity data' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

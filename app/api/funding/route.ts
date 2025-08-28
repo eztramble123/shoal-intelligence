@@ -21,7 +21,7 @@ export async function GET() {
     
     if (!apiUrl || !apiKey) {
       return NextResponse.json(
-        { error: 'API configuration missing' },
+        { error: 'API configuration missing. Please check BLAKE_API_URL and BLAKE_API_KEY environment variables.' },
         { status: 500 }
       );
     }
@@ -39,7 +39,7 @@ export async function GET() {
     });
     
     if (!response.ok) {
-      throw new Error(`API request failed: ${response.status}`);
+      throw new Error(`Blake AI API request failed with status ${response.status}: ${response.statusText}`);
     }
     
     const rawData: RawFundingRecord[] = await response.json();
@@ -84,15 +84,10 @@ export async function GET() {
   } catch (error) {
     console.error('Funding API error:', error);
     
-    // Return mock data in development if API fails
-    if (process.env.NODE_ENV === 'development') {
-      console.log('API failed, returning mock data for development');
-      const mockData = getMockData();
-      return NextResponse.json(mockData);
-    }
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while fetching funding data';
     
     return NextResponse.json(
-      { error: 'Failed to fetch funding data' },
+      { error: errorMessage },
       { status: 500 }
     );
   }

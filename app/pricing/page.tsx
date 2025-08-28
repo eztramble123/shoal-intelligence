@@ -10,11 +10,14 @@ export default function Pricing() {
   const { data: session, status } = useSession()
   const [loading, setLoading] = useState(false)
 
-  // Check authentication
+  // Check authentication and redirect to dashboard for early access
   useEffect(() => {
     if (status === 'loading') return
     if (!session) {
       router.push('/login')
+    } else {
+      // For early access, skip plan selection and go straight to dashboard
+      router.push('/')
     }
   }, [session, status, router])
 

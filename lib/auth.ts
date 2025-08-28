@@ -25,19 +25,25 @@ export const authOptions: NextAuthOptions = {
           throw new Error('Email and password required')
         }
 
+        let emailToUse = credentials.email
+        let isDemo = false
+
+        // Check if this is the YC demo account
+        if (credentials.email === 'yc_demo') {
+          emailToUse = 'yc_demo@shoalintel.xyz'
+          isDemo = true
+        }
+
         // Find user by email
         const user = await prisma.user.findUnique({
-          where: { email: credentials.email },
+          where: { email: emailToUse },
         })
 
         if (!user || !user.password) {
           throw new Error('Invalid email or password')
         }
 
-        // Check if email is verified
-        if (!user.emailVerified) {
-          throw new Error('Please verify your email before signing in')
-        }
+        // Email verification removed - early access users can sign in immediately
 
         // Verify password
         const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
@@ -49,7 +55,7 @@ export const authOptions: NextAuthOptions = {
         return {
           id: user.id,
           email: user.email,
-          name: user.name,
+          name: user.name || (isDemo ? 'YC Demo User' : null),
           image: user.image,
         }
       },
@@ -66,10 +72,18 @@ export const authOptions: NextAuthOptions = {
         // When using database sessions
         if (user) {
           session.user.id = user.id
+          // Mark demo account in session
+          if (user.email === 'yc_demo@shoalintel.xyz') {
+            session.user.isDemo = true
+          }
         }
         // When using JWT sessions
         else if (token?.sub) {
           session.user.id = token.sub
+          // Check for demo account in JWT
+          if (token.email === 'yc_demo@shoalintel.xyz') {
+            session.user.isDemo = true
+          }
         }
       }
       return session

@@ -8,6 +8,7 @@ import { SharedLayout } from '@/components/shared-layout';
 import { ParityDashboardData, ProcessedParityRecord } from '@/app/types/parity';
 import { filterTokensByComparison } from '@/app/lib/parity-utils';
 import { CardSkeleton, StatsGridSkeleton, TableSkeleton, Skeleton } from '@/components/skeleton';
+import { ErrorState } from '@/components/error-states';
 import { SpinningShoalLogo } from '@/components/spinning-shoal-logo';
 import styles from './ExchangeComparison.module.css';
 
@@ -18,6 +19,8 @@ const TokenListingDashboard = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [parityData, setParityData] = useState<ParityDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
   const [searchQuery] = useState('');
   const [primaryExchange, setPrimaryExchange] = useState<string>('');
   const [compareExchanges, setCompareExchanges] = useState<string[]>([]);
@@ -87,27 +90,71 @@ const TokenListingDashboard = () => {
     return () => clearTimeout(timer);
   }, [compareSearchTerm]);
 
+  // Enhanced fetch parity data with comprehensive error handling
+  const fetchParityData = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      const response = await fetch('/api/parity', {
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        let errorMessage = `HTTP ${response.status}: Failed to fetch parity data`;
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+        } catch {
+          // Use default error message if JSON parsing fails
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      const data = await response.json();
+      
+      if (!data) {
+        throw new Error('No data received from server');
+      }
+      
+      if (data.error) {
+        throw new Error(data.error);
+      }
+      
+      setParityData(data);
+      setError(null);
+      
+      // Set primary exchange from API data, fallback to 'Binance' if not provided
+      const newPrimary = data.baseExchange || 'Binance';
+      setPrimaryExchange(newPrimary);
+      // Ensure the new primary is not in compare exchanges to prevent self-comparison
+      setCompareExchanges(prev => prev.filter(e => e !== newPrimary));
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while fetching parity data';
+      console.error('Error fetching parity data:', errorMessage);
+      setError(errorMessage);
+      setParityData(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
+
   // Fetch parity data
   useEffect(() => {
-    const fetchParityData = async () => {
-      try {
-        const response = await fetch('/api/parity');
-        const data = await response.json();
-        setParityData(data);
-        // Set primary exchange from API data, fallback to 'Binance' if not provided
-        const newPrimary = data.baseExchange || 'Binance';
-        setPrimaryExchange(newPrimary);
-        // Ensure the new primary is not in compare exchanges to prevent self-comparison
-        setCompareExchanges(prev => prev.filter(e => e !== newPrimary));
-      } catch (error) {
-        console.error('Error fetching parity data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
+    if (status === 'loading' || !session) return;
     fetchParityData();
-  }, []);
+  }, [retryCount, session, status]);
 
   // Memoized sort function for tokens
   const sortTokens = useCallback((tokens: ProcessedParityRecord[], column: string | null, direction: 'asc' | 'desc') => {
@@ -174,7 +221,10 @@ const TokenListingDashboard = () => {
   
   // Memoized filter and sort tokens using new comparison model
   const baseFilteredTokens = useMemo(() => {
-    return parityData ? filterTokensByComparison(parityData.tokens, primaryExchange, compareExchanges, searchQuery) : [];
+    if (!parityData || !parityData.tokens || !Array.isArray(parityData.tokens)) {
+      return [];
+    }
+    return filterTokensByComparison(parityData.tokens, primaryExchange, compareExchanges, searchQuery);
   }, [parityData, primaryExchange, compareExchanges, searchQuery]);
 
   // Filter out hidden tokens
@@ -217,7 +267,7 @@ const TokenListingDashboard = () => {
 
   // Memoized coverage overview calculation for filtered tokens
   const displayedCoverageOverview = useMemo(() => {
-    if (!parityData) {
+    if (!parityData || !parityData.tokens || !Array.isArray(parityData.tokens)) {
       return undefined;
     }
 
@@ -367,6 +417,43 @@ const TokenListingDashboard = () => {
   // Don't render if not authenticated
   if (!session) {
     return null;
+  }
+
+  if (error) {
+    return (
+      <SharedLayout currentPage="token-matrix">
+        <div style={{
+          padding: '30px',
+          fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
+        }}>
+          {/* Header */}
+          <div style={{ marginBottom: '30px' }}>
+            <h1 style={{ fontSize: '24px', fontWeight: '600', margin: '0 0 10px 0', color: '#ffffff' }}>
+              Listings Parity Analysis
+            </h1>
+            <p style={{ fontSize: '14px', color: '#9ca3af' }}>
+              Exchange coverage and token listing analysis
+            </p>
+          </div>
+
+          {/* Error State */}
+          <div style={{
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '50vh',
+            padding: '20px'
+          }}>
+            <ErrorState
+              error={error}
+              onRetry={handleRetry}
+              retryLabel="Retry Loading"
+              variant="default"
+            />
+          </div>
+        </div>
+      </SharedLayout>
+    );
   }
 
   if (loading) {

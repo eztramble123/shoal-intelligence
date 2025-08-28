@@ -31,6 +31,7 @@ export function SharedLayout({ children, currentPage }: SharedLayoutProps) {
     if (pathname === '/venture-intelligence') return 'venture-intelligence';  
     if (pathname === '/listings-feed') return 'listings-feed';
     if (pathname === '/pricing') return 'pricing';
+    if (pathname.startsWith('/sops')) return 'sops';
     return currentPage; // fallback to prop
   };
   

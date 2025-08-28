@@ -6,6 +6,7 @@ import { Treemap, ResponsiveContainer } from 'recharts';
 import { FundingDashboardData } from '@/app/types/funding';
 import { CardSkeleton, TableSkeleton, ChartSkeleton, Skeleton } from '@/components/skeleton';
 import { formatAmount } from '@/app/lib/funding-utils';
+import { ErrorState } from '@/components/error-states';
 
 // TypeScript interfaces
 // interface Investor {
@@ -181,40 +182,72 @@ const VentureIntelligenceDashboard = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [fundingData, setFundingData] = useState<FundingDashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
+
+  const fetchFundingData = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      const response = await fetch('/api/funding', {
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        let errorMessage = `HTTP ${response.status}: Failed to fetch funding data`;
+        
+        try {
+          const errorData = JSON.parse(errorText);
+          if (errorData.message) {
+            errorMessage = errorData.message;
+          }
+        } catch {
+          // Use default error message if JSON parsing fails
+        }
+        
+        throw new Error(errorMessage);
+      }
+      
+      const data = await response.json();
+      
+      if (!data) {
+        throw new Error('No data received from server');
+      }
+      
+      setFundingData(data);
+      setError(null);
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred while fetching funding data';
+      console.error('Error fetching funding data:', errorMessage);
+      setError(errorMessage);
+      setFundingData(null);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleRetry = () => {
+    setRetryCount(prev => prev + 1);
+  };
 
   useEffect(() => {
-    const fetchFundingData = async () => {
-      try {
-        setIsLoading(true);
-        const response = await fetch('/api/funding');
-        if (!response.ok) {
-          throw new Error('Failed to fetch funding data');
-        }
-        const data = await response.json();
-        setFundingData(data);
-        setError(null);
-      } catch (err) {
-        console.error('Error fetching funding data:', err);
-        setError('Failed to load funding data');
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchFundingData();
     // Refresh every 5 minutes
     const interval = setInterval(fetchFundingData, 5 * 60 * 1000);
     return () => clearInterval(interval);
-  }, []);
+  }, [retryCount]);
 
   // Get recent 90-day funding rounds
-  const recent90DayRounds = fundingData ? (() => {
+  const recent90DayRounds = fundingData && fundingData.latestRounds ? (() => {
     console.log('=== DEBUGGING FUNDING DATA ===');
     console.log('fundingData exists:', !!fundingData);
     console.log('fundingData.latestRounds exists:', !!fundingData.latestRounds);
     console.log('fundingData.latestRounds length:', fundingData.latestRounds?.length ?? 0);
     
-    if (fundingData.latestRounds && fundingData.latestRounds.length > 0) {
+    if (Array.isArray(fundingData.latestRounds) && fundingData.latestRounds.length > 0) {
       console.log('First 3 rounds:', fundingData.latestRounds.slice(0, 3).map(r => ({
         name: r.name,
         date: r.date,
@@ -229,10 +262,25 @@ const VentureIntelligenceDashboard = () => {
     console.log('90 days ago:', ninetyDaysAgo);
     console.log('Today:', new Date());
 
+    if (!Array.isArray(fundingData.latestRounds)) {
+      console.error('latestRounds is not an array:', fundingData.latestRounds);
+      return [];
+    }
+
     const filteredRounds = fundingData.latestRounds
       .filter(round => {
+        if (!round || !round.date) {
+          console.warn('Invalid round data:', round);
+          return false;
+        }
+        
         // Convert string date to Date object for proper comparison
         const roundDate = new Date(round.date);
+        if (isNaN(roundDate.getTime())) {
+          console.warn('Invalid date for round:', round.name, round.date);
+          return false;
+        }
+        
         const isWithin90Days = roundDate >= ninetyDaysAgo;
         console.log(`Round "${round.name}": date=${round.date}, roundDate=${roundDate}, within90Days=${isWithin90Days}`);
         return isWithin90Days;
@@ -242,14 +290,30 @@ const VentureIntelligenceDashboard = () => {
     
     const mappedRounds = filteredRounds
       .slice(0, 8)
-      .map((round, idx) => ({
-        rank: idx + 1,
-        company: round.name,
-        round: round.round,
-        amount: round.amountDisplay,
-        date: round.dateDisplay,
-        leadInvestor: formatInvestorDisplay(round.leadInvestors, round.otherInvestors)
-      }));
+      .map((round, idx) => {
+        if (!round) {
+          return {
+            rank: idx + 1,
+            company: 'Unknown',
+            round: 'Unknown',
+            amount: '$0',
+            date: 'Unknown',
+            leadInvestor: 'Unknown'
+          };
+        }
+        
+        return {
+          rank: idx + 1,
+          company: round.name || 'Unknown',
+          round: round.round || 'Unknown',
+          amount: round.amountDisplay || '$0',
+          date: round.dateDisplay || 'Unknown',
+          leadInvestor: formatInvestorDisplay(
+            Array.isArray(round.leadInvestors) ? round.leadInvestors : [],
+            Array.isArray(round.otherInvestors) ? round.otherInvestors : []
+          )
+        };
+      });
     
     console.log('Final mapped rounds:', mappedRounds);
     console.log('=== END DEBUG ===');
@@ -260,23 +324,32 @@ const VentureIntelligenceDashboard = () => {
   ];
 
 
-  const allFundingRounds: FundingRound[] = fundingData ?
-    fundingData.latestRounds.map(round => ({
-      time: round.dateDisplay,
-      company: round.name,
-      round: round.round ?? 'Unknown',
-      amount: round.amountDisplay,
-      leadInvestor: formatInvestorDisplay(round.leadInvestors, round.otherInvestors),
-      valuation: round.valuation ?? 'No data',
-      change: '+0.0%', // TODO: Calculate from historical data
-      changeType: 'up' as const
-    })) :
+  const allFundingRounds: FundingRound[] = fundingData && Array.isArray(fundingData.latestRounds) ?
+    fundingData.latestRounds
+      .filter(round => round && round.name && round.dateDisplay && round.amountDisplay)
+      .map(round => ({
+        time: round.dateDisplay || 'Unknown',
+        company: round.name || 'Unknown',
+        round: round.round ?? 'Unknown',
+        amount: round.amountDisplay || '$0',
+        leadInvestor: formatInvestorDisplay(
+          Array.isArray(round.leadInvestors) ? round.leadInvestors : [],
+          Array.isArray(round.otherInvestors) ? round.otherInvestors : []
+        ),
+        valuation: round.valuation ?? 'No data',
+        change: '+0.0%', // TODO: Calculate from historical data
+        changeType: 'up' as const
+      })) :
     [
-      { time: 'Loading...', company: 'Loading...', round: 'Loading...', amount: 'Loading...', leadInvestor: 'Loading...', valuation: 'Loading...', change: 'Loading...', changeType: 'up' },
+      { time: 'No data', company: 'No data', round: 'No data', amount: 'No data', leadInvestor: 'No data', valuation: 'No data', change: 'No data', changeType: 'up' },
     ];
 
   // Get unique values for dropdowns
-  const uniqueRounds = ['All Rounds', ...new Set(allFundingRounds.map(round => round.round).filter(Boolean))];
+  const uniqueRounds = ['All Rounds', ...new Set(
+    allFundingRounds
+      .map(round => round.round)
+      .filter(round => round && round !== 'No data' && round !== 'Loading...' && round !== 'Unknown')
+  )];
   const amountRanges = ['All Amounts', '$0-1M', '$1-5M', '$5-10M', '$10-50M', '$50M+'];
 
   // Filter and sort funding rounds based on filters
@@ -298,7 +371,8 @@ const VentureIntelligenceDashboard = () => {
         if (hasB) amountNum = safeNumValue * 1000; // Convert billions to millions
         else if (hasM) amountNum = safeNumValue;
         else if (hasK) amountNum = safeNumValue / 1000; // Convert thousands to millions
-        else amountNum = safeNumValue / 1000000; // Assume dollars, convert to millions
+        else if (safeNumValue > 0) amountNum = safeNumValue / 1000000; // Assume dollars, convert to millions
+        else amountNum = 0;
         
         switch (selectedAmount) {
           case '$0-1M': return amountNum <= 1;
@@ -314,7 +388,15 @@ const VentureIntelligenceDashboard = () => {
     })
     .sort((a, b) => {
       // Sort by time only (most recent first)
-      return new Date(b.time).getTime() - new Date(a.time).getTime();
+      const dateA = new Date(a.time);
+      const dateB = new Date(b.time);
+      
+      // Handle invalid dates
+      if (isNaN(dateA.getTime()) && isNaN(dateB.getTime())) return 0;
+      if (isNaN(dateA.getTime())) return 1; // Invalid dates go to the end
+      if (isNaN(dateB.getTime())) return -1;
+      
+      return dateB.getTime() - dateA.getTime();
     });
 
   // Calculate pagination
@@ -337,7 +419,7 @@ const VentureIntelligenceDashboard = () => {
   };
 
   // Extended funding timeline data - 90 days with weekly data points (13 weeks)
-  const fundingTimelineData = fundingData ? (() => {
+  const fundingTimelineData = fundingData && Array.isArray(fundingData.latestRounds) ? (() => {
     const now = new Date();
     const weeklyData = [];
     
@@ -350,12 +432,23 @@ const VentureIntelligenceDashboard = () => {
       
       // Filter rounds for this week
       const weeklyRounds = fundingData.latestRounds.filter(round => {
+        if (!round || !round.date || typeof round.amount !== 'number') {
+          return false;
+        }
+        
         const roundDate = new Date(round.date);
+        if (isNaN(roundDate.getTime())) {
+          return false;
+        }
+        
         return roundDate >= weekStart && roundDate <= weekEnd;
       });
       
       // Sum funding for this week
-      const weeklyTotal = weeklyRounds.reduce((sum, round) => sum + round.amount, 0);
+      const weeklyTotal = weeklyRounds.reduce((sum, round) => {
+        return sum + (typeof round.amount === 'number' ? round.amount : 0);
+      }, 0);
+      
       // Convert to appropriate scale for chart display (in millions)
       weeklyData.push(weeklyTotal / 1e6);
     }
@@ -364,26 +457,30 @@ const VentureIntelligenceDashboard = () => {
   })() : [100, 150, 200, 170, 240, 300, 280, 200, 230, 280, 250, 180, 150];
 
   // Prepare treemap data from last90DaysCategories - show all 15 sectors (90-day filtered)
-  const treemapData = fundingData ? 
+  const treemapData = fundingData && Array.isArray(fundingData.last90DaysCategories) ? 
     (() => {
       console.log('=== PREPARING 90-DAY TREEMAP DATA ===');
       console.log('fundingData.last90DaysCategories:', fundingData.last90DaysCategories);
       console.log('Total 90-day categories available:', fundingData.last90DaysCategories.length);
       
-      const data = fundingData.last90DaysCategories.map((cat) => ({
-        name: cat.category,
-        size: cat.totalAmount > 0 ? Math.max(cat.totalAmount, 1000000) : 1000000, // Minimum size for visibility, but preserve real amount
-        fill: cat.color || '#6b7280',
-        deals: cat.dealCount,
-        percentage: cat.percentage,
-        totalAmount: cat.totalAmount // Keep the real amount for display
-      }));
+      const data = fundingData.last90DaysCategories
+        .filter(cat => cat && typeof cat.category === 'string')
+        .map((cat) => ({
+          name: cat.category || 'Unknown',
+          size: (typeof cat.totalAmount === 'number' && cat.totalAmount > 0) 
+            ? Math.max(cat.totalAmount, 1000000) 
+            : 1000000, // Minimum size for visibility
+          fill: cat.color || '#6b7280',
+          deals: typeof cat.dealCount === 'number' ? cat.dealCount : 0,
+          percentage: typeof cat.percentage === 'number' ? cat.percentage : 0,
+          totalAmount: typeof cat.totalAmount === 'number' ? cat.totalAmount : 0
+        }));
       
       console.log('90-day treemap data prepared:', data.map(d => `${d.name}: $${(d.totalAmount / 1e6).toFixed(0)}M (${d.deals} deals)`));
       return data;
     })() :
     [
-      { name: 'Loading...', size: 100, fill: '#6b7280', deals: 0, percentage: 0, totalAmount: 0 }
+      { name: 'No data', size: 100, fill: '#6b7280', deals: 0, percentage: 0, totalAmount: 0 }
     ];
 
 
@@ -518,12 +615,18 @@ const VentureIntelligenceDashboard = () => {
 
         {error && (
           <div style={{
-            textAlign: 'center',
-            padding: '60px',
-            color: '#ef4444',
-            fontSize: '16px'
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center',
+            minHeight: '60vh',
+            padding: '20px'
           }}>
-            {error}
+            <ErrorState
+              error={error}
+              onRetry={handleRetry}
+              retryLabel="Retry Loading"
+              variant="default"
+            />
           </div>
         )}
 
@@ -645,8 +748,10 @@ const VentureIntelligenceDashboard = () => {
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Total Capital Deployed:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                      {fundingData ? (() => {
-                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                      {fundingData && Array.isArray(fundingData.last90DaysCategories) ? (() => {
+                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => {
+                          return sum + (typeof cat?.totalAmount === 'number' ? cat.totalAmount : 0);
+                        }, 0);
                         return total90Day >= 1e9 ? `$${(total90Day / 1e9).toFixed(1)}B` :
                                total90Day >= 1e6 ? `$${(total90Day / 1e6).toFixed(0)}M` :
                                total90Day >= 1e3 ? `$${(total90Day / 1e3).toFixed(0)}K` :
@@ -660,7 +765,10 @@ const VentureIntelligenceDashboard = () => {
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Total Deals:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                      {fundingData ? fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0) : 0}
+                      {fundingData && Array.isArray(fundingData.last90DaysCategories) ? 
+                        fundingData.last90DaysCategories.reduce((sum, cat) => {
+                          return sum + (typeof cat?.dealCount === 'number' ? cat.dealCount : 0);
+                        }, 0) : 0}
                     </span>
                     <span style={{ fontSize: '12px', color: '#9ca3af' }}>—</span>
                   </div>
@@ -669,9 +777,13 @@ const VentureIntelligenceDashboard = () => {
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Avg Round Size:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                      {fundingData ? (() => {
-                        const totalDeals90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0);
-                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                      {fundingData && Array.isArray(fundingData.last90DaysCategories) ? (() => {
+                        const totalDeals90Day = fundingData.last90DaysCategories.reduce((sum, cat) => {
+                          return sum + (typeof cat?.dealCount === 'number' ? cat.dealCount : 0);
+                        }, 0);
+                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => {
+                          return sum + (typeof cat?.totalAmount === 'number' ? cat.totalAmount : 0);
+                        }, 0);
                         const avgRound90Day = totalDeals90Day > 0 ? total90Day / totalDeals90Day : 0;
                         return avgRound90Day >= 1e9 ? `$${(avgRound90Day / 1e9).toFixed(1)}B` :
                                avgRound90Day >= 1e6 ? `$${(avgRound90Day / 1e6).toFixed(0)}M` :
@@ -686,8 +798,10 @@ const VentureIntelligenceDashboard = () => {
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>90-Day Total Raised:</span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-                      {fundingData ? (() => {
-                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                      {fundingData && Array.isArray(fundingData.last90DaysCategories) ? (() => {
+                        const total90Day = fundingData.last90DaysCategories.reduce((sum, cat) => {
+                          return sum + (typeof cat?.totalAmount === 'number' ? cat.totalAmount : 0);
+                        }, 0);
                         return total90Day >= 1e9 ? `$${(total90Day / 1e9).toFixed(1)}B` :
                                total90Day >= 1e6 ? `$${(total90Day / 1e6).toFixed(0)}M` :
                                total90Day >= 1e3 ? `$${(total90Day / 1e3).toFixed(0)}K` :
@@ -745,8 +859,10 @@ const VentureIntelligenceDashboard = () => {
           }}>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData ? (() => {
-                  const total90Days = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                {fundingData && Array.isArray(fundingData.last90DaysCategories) ? (() => {
+                  const total90Days = fundingData.last90DaysCategories.reduce((sum, cat) => {
+                    return sum + (typeof cat?.totalAmount === 'number' ? cat.totalAmount : 0);
+                  }, 0);
                   return formatAmount(total90Days);
                 })() : '$0'}
               </div>
@@ -754,21 +870,31 @@ const VentureIntelligenceDashboard = () => {
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData ? fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0) : 0}
+                {fundingData && Array.isArray(fundingData.last90DaysCategories) ? 
+                  fundingData.last90DaysCategories.reduce((sum, cat) => {
+                    return sum + (typeof cat?.dealCount === 'number' ? cat.dealCount : 0);
+                  }, 0) : 0}
               </div>
               <div style={{ fontSize: '12px' }}>Total Deals</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#10b981', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData ? fundingData.last90DaysCategories.filter(cat => cat.totalAmount > 0).length : 0}
+                {fundingData && Array.isArray(fundingData.last90DaysCategories) ? 
+                  fundingData.last90DaysCategories.filter(cat => 
+                    cat && typeof cat.totalAmount === 'number' && cat.totalAmount > 0
+                  ).length : 0}
               </div>
               <div style={{ fontSize: '12px' }}>Active Sectors</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData ? (() => {
-                  const totalDeals = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0);
-                  const total90Days = fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.totalAmount, 0);
+                {fundingData && Array.isArray(fundingData.last90DaysCategories) ? (() => {
+                  const totalDeals = fundingData.last90DaysCategories.reduce((sum, cat) => {
+                    return sum + (typeof cat?.dealCount === 'number' ? cat.dealCount : 0);
+                  }, 0);
+                  const total90Days = fundingData.last90DaysCategories.reduce((sum, cat) => {
+                    return sum + (typeof cat?.totalAmount === 'number' ? cat.totalAmount : 0);
+                  }, 0);
                   const avgDeal = totalDeals > 0 ? total90Days / totalDeals : 0;
                   return formatAmount(avgDeal);
                 })() : '$0'}
@@ -973,13 +1099,17 @@ const VentureIntelligenceDashboard = () => {
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#10b981', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData ? fundingData.last90DaysCategories.reduce((sum, cat) => sum + cat.dealCount, 0) : 0}
+                {fundingData && Array.isArray(fundingData.last90DaysCategories) ? 
+                  fundingData.last90DaysCategories.reduce((sum, cat) => {
+                    return sum + (typeof cat?.dealCount === 'number' ? cat.dealCount : 0);
+                  }, 0) : 0}
               </div>
               <div style={{ fontSize: '12px' }}>Total Deals</div>
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData?.activeDeals ?? 'No data'}
+                {(fundingData && typeof fundingData.activeDeals === 'number') ? 
+                  fundingData.activeDeals : 'No data'}
               </div>
               <div style={{ fontSize: '12px' }}>Active Total</div>
             </div>
