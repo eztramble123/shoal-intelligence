@@ -1,14 +1,11 @@
 'use client';
 
 import { useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 
 export default function ListingsFeed() {
-  const router = useRouter();
-
   useEffect(() => {
-    router.replace('/coming-soon');
-  }, [router]);
+    window.location.href = 'https://forms.gle/Wv5VL6SqjsUPwVst6';
+  }, []);
 
   return null;
 }
