@@ -2,7 +2,6 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import Link from 'next/link'
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -57,7 +56,7 @@ export function LoginForm({
       } else if (result?.ok) {
         router.push('/')
       }
-    } catch (error) {
+    } catch {
       setError('An error occurred during sign in')
     } finally {
       setLoading(false)

@@ -381,13 +381,6 @@ const TokenListingDashboard = () => {
     setHiddenTokens(prev => new Set([...prev, tokenId]));
   }, []);
   
-  const handleUnhideToken = useCallback((tokenId: string) => {
-    setHiddenTokens(prev => {
-      const newSet = new Set(prev);
-      newSet.delete(tokenId);
-      return newSet;
-    });
-  }, []);
   
   const handleShowAllHidden = useCallback(() => {
     setHiddenTokens(new Set());

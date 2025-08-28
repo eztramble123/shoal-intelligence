@@ -1,31 +1,26 @@
 import { NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '@/lib/auth';
-import { processListingsData, calculateListingTrends, filterNewListings } from '@/app/lib/listings-utils';
+import { processListingsData, calculateListingTrends } from '@/app/lib/listings-utils';
 import { RawListingRecord, ListingsDashboardData } from '@/app/types/listings';
 
 // Apply period-specific filtering to focus data on the requested time range
 function applyPeriodFilter(data: ListingsDashboardData, period: string): ListingsDashboardData {
   // Get the period-specific data based on the request
   let filteredListings;
-  let periodData;
   
   switch (period) {
     case '30d':
       filteredListings = data.last30Days.newListings;
-      periodData = data.last30Days;
       break;
     case '90d':
       filteredListings = data.last90Days.newListings;
-      periodData = data.last90Days;
       break;
     case 'ytd':
       filteredListings = data.yearToDate.newListings;
-      periodData = data.yearToDate;
       break;
     default:
       filteredListings = data.last30Days.newListings;
-      periodData = data.last30Days;
   }
   
   // Return data with the primary listings replaced by period-filtered data

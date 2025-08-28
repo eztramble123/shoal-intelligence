@@ -39,7 +39,7 @@ function ResetPasswordForm() {
         } else {
           setError(data.error || 'Invalid or expired reset token')
         }
-      } catch (error) {
+      } catch {
         setError('Failed to validate reset token')
       } finally {
         setValidating(false)
@@ -95,7 +95,7 @@ function ResetPasswordForm() {
       } else {
         setError(data.error || 'Password reset failed')
       }
-    } catch (error) {
+    } catch {
       setError('Network error. Please try again.')
     } finally {
       setLoading(false)

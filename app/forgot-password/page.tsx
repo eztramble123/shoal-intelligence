@@ -39,7 +39,7 @@ export default function ForgotPasswordPage() {
       } else {
         setError(data.error || 'Failed to send reset email')
       }
-    } catch (error) {
+    } catch {
       setError('Network error. Please try again.')
     } finally {
       setLoading(false)
