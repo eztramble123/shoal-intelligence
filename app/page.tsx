@@ -1,14 +1,12 @@
 'use client';
 
-import { useRouter } from 'next/navigation';
 import Image from 'next/image';
 
 export default function LandingPage() {
-  const router = useRouter();
 
 
   const handleGetStarted = () => {
-    router.push('/coming-soon');
+    window.open('https://forms.gle/Wv5VL6SqjsUPwVst6', '_blank');
   };
 
   const handleContactSales = () => {
