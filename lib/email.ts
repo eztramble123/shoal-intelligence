@@ -1,18 +1,8 @@
-import nodemailer from 'nodemailer'
+import { Resend } from 'resend'
 import { randomBytes } from 'crypto'
 
-// Create reusable transporter
-const createTransporter = () => {
-  return nodemailer.createTransporter({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS,
-    },
-  })
-}
+// Initialize Resend
+const resend = new Resend(process.env.RESEND_API_KEY)
 
 // Email templates
 const emailTemplates = {
@@ -202,13 +192,12 @@ export const generatePasswordResetToken = () => {
 
 // Send verification email
 export const sendVerificationEmail = async (email: string, token: string) => {
-  const transporter = createTransporter()
   const verificationUrl = `${process.env.NEXTAUTH_URL}/api/auth/verify-email?token=${token}`
   const template = emailTemplates.verification(verificationUrl)
 
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    await resend.emails.send({
+      from: process.env.RESEND_FROM || 'noreply@shoalintelligence.com',
       to: email,
       subject: template.subject,
       text: template.text,
@@ -223,13 +212,12 @@ export const sendVerificationEmail = async (email: string, token: string) => {
 
 // Send password reset email
 export const sendPasswordResetEmail = async (email: string, token: string) => {
-  const transporter = createTransporter()
   const resetUrl = `${process.env.NEXTAUTH_URL}/reset-password?token=${token}`
   const template = emailTemplates.passwordReset(resetUrl)
 
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    await resend.emails.send({
+      from: process.env.RESEND_FROM || 'noreply@shoalintelligence.com',
       to: email,
       subject: template.subject,
       text: template.text,
@@ -244,12 +232,11 @@ export const sendPasswordResetEmail = async (email: string, token: string) => {
 
 // Send welcome email
 export const sendWelcomeEmail = async (email: string, name?: string) => {
-  const transporter = createTransporter()
   const template = emailTemplates.welcome(name || '')
 
   try {
-    await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
+    await resend.emails.send({
+      from: process.env.RESEND_FROM || 'noreply@shoalintelligence.com',
       to: email,
       subject: template.subject,
       text: template.text,

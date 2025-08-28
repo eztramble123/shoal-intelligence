@@ -215,7 +215,7 @@ export default function ForgotPasswordPage() {
               textAlign: 'center',
               lineHeight: '1.5'
             }}>
-              We'll send a password reset link to your email address if an account exists.
+              We&apos;ll send a password reset link to your email address if an account exists.
             </p>
           </form>
         </div>

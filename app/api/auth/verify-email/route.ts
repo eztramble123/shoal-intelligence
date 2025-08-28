@@ -114,7 +114,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate new verification token
-    const token = require('crypto').randomBytes(32).toString('hex')
+    const { randomBytes } = await import('crypto')
+    const token = randomBytes(32).toString('hex')
     const expires = new Date()
     expires.setHours(expires.getHours() + 24)
 
