@@ -11,11 +11,9 @@ export function UpgradeButton({ priceId, text = 'Upgrade to Pro' }: UpgradeButto
   const [loading, setLoading] = useState(false)
 
   const handleUpgrade = async () => {
-    console.log('Upgrade button clicked, priceId:', priceId)
     setLoading(true)
 
     try {
-      console.log('Making request to /api/stripe/checkout...')
       const response = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: {
@@ -24,19 +22,14 @@ export function UpgradeButton({ priceId, text = 'Upgrade to Pro' }: UpgradeButto
         body: JSON.stringify({ priceId }),
       })
 
-      console.log('Response status:', response.status)
       const data = await response.json()
-      console.log('Response data:', data)
 
       if (data.url) {
-        console.log('Redirecting to Stripe checkout:', data.url)
         window.location.href = data.url
       } else {
-        console.error('No checkout URL received')
         alert('No checkout URL received')
       }
     } catch (error) {
-      console.error('Error creating checkout session:', error)
       alert('Failed to create checkout session: ' + (error as Error).message)
     } finally {
       setLoading(false)

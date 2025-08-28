@@ -169,7 +169,6 @@ export const calculateListingTrends = async (periodDays: number): Promise<Record
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient();
     
-    console.log(`=== CALCULATING ${periodDays}-DAY LISTING TRENDS ===`);
     
     // Get current period (last N days)
     const today = new Date();
@@ -187,8 +186,6 @@ export const calculateListingTrends = async (periodDays: number): Promise<Record
     previousPeriodStart.setDate(previousPeriodStart.getDate() - periodDays);
     previousPeriodStart.setHours(0, 0, 0, 0);
     
-    console.log('Current period:', currentPeriodStart.toISOString().split('T')[0], 'to', today.toISOString().split('T')[0]);
-    console.log('Previous period:', previousPeriodStart.toISOString().split('T')[0], 'to', previousPeriodEnd.toISOString().split('T')[0]);
     
     // Get current period data - use latest snapshot per ticker within period
     const currentPeriodData = await prisma.listingSnapshot.groupBy({
@@ -220,7 +217,6 @@ export const calculateListingTrends = async (periodDays: number): Promise<Record
       }
     });
     
-    console.log(`Found ${currentPeriodData.length} tickers in current period, ${previousPeriodData.length} in previous period`);
     
     // Create lookup maps
     const currentMap = new Map(currentPeriodData.map(item => [item.ticker, item._max.exchangeCount || 0]));
@@ -267,14 +263,12 @@ export const calculateListingTrends = async (periodDays: number): Promise<Record
         previousExchangeCount: previousCount
       };
       
-      console.log(`${ticker}: ${trendDisplay} (${trendDirection}) - Current: ${currentCount} exchanges, Previous: ${previousCount} exchanges`);
     }
     
     await prisma.$disconnect();
     return trends;
     
-  } catch (error) {
-    console.error('Listing trend calculation error:', error);
+  } catch {
     // Return empty trends as fallback
     return {};
   }

@@ -72,7 +72,6 @@ export async function GET(request: Request) {
     });
     
   } catch (error) {
-    console.error('Parity API error:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while fetching parity data';
     

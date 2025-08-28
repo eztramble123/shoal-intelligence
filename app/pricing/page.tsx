@@ -22,11 +22,9 @@ export default function Pricing() {
   }, [session, status, router])
 
   const handleUpgradeClick = async () => {
-    console.log('Pro upgrade clicked')
     setLoading(true)
 
     try {
-      console.log('Making request to /api/stripe/checkout...')
       const response = await fetch('/api/stripe/checkout', {
         method: 'POST',
         headers: {
@@ -35,19 +33,14 @@ export default function Pricing() {
         body: JSON.stringify({ priceId: 'price_1RuKGCGGk1IM6dHdCOILBF7Z' }),
       })
 
-      console.log('Response status:', response.status)
       const data = await response.json()
-      console.log('Response data:', data)
 
       if (data.url) {
-        console.log('Redirecting to Stripe checkout:', data.url)
         window.location.href = data.url
       } else {
-        console.error('No checkout URL received')
         alert('No checkout URL received')
       }
-    } catch (error) {
-      console.error('Error creating checkout session:', error)
+    } catch {
       alert('Failed to create checkout session')
     } finally {
       setLoading(false)
@@ -55,7 +48,6 @@ export default function Pricing() {
   }
 
   const handleFreeClick = async () => {
-    console.log('Free plan selected')
     setLoading(true)
     
     try {
@@ -72,11 +64,9 @@ export default function Pricing() {
         // Redirect to dashboard
         router.push('/')
       } else {
-        console.error('Failed to update plan')
         alert('Failed to select free plan')
       }
-    } catch (error) {
-      console.error('Error selecting free plan:', error)
+    } catch {
       alert('Failed to select free plan')
     } finally {
       setLoading(false)

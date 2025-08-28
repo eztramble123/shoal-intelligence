@@ -9,14 +9,12 @@ const prisma = new PrismaClient();
 // This should be called daily by a cron job or scheduler
 export async function POST(request: Request) {
   try {
-    console.log('=== DAILY FUNDING SNAPSHOT COLLECTION ===');
     
     // Verify authorization
     const authHeader = request.headers.get('authorization');
     const expectedKey = process.env.CRON_SECRET;
     
     if (!expectedKey) {
-      console.error('CRON_SECRET environment variable is required but not set');
       return NextResponse.json(
         { error: 'Server configuration error' },
         { status: 500 }
@@ -39,7 +37,6 @@ export async function POST(request: Request) {
     }
     
     // Fetch fresh data from Blake AI
-    console.log('Fetching data from Blake AI...');
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -56,11 +53,9 @@ export async function POST(request: Request) {
     }
     
     const rawData: RawFundingRecord[] = await response.json();
-    console.log(`Fetched ${rawData.length} funding records from Blake AI`);
     
     // Process the data to get category metrics
     const processedData = processFundingData(rawData);
-    console.log(`Processed data into ${processedData.trendingCategories.length} categories`);
     
     // Get today's date (without time for consistency)
     const today = new Date();
@@ -81,7 +76,6 @@ export async function POST(request: Request) {
       });
       
       if (existingSnapshot) {
-        console.log(`Snapshot already exists for ${category.category} on ${today.toISOString().split('T')[0]}`);
         continue;
       }
       
@@ -97,10 +91,8 @@ export async function POST(request: Request) {
       });
       
       snapshots.push(snapshot);
-      console.log(`Created snapshot for ${category.category}: $${category.totalAmountDisplay} (${category.dealCount} deals)`);
     }
     
-    console.log(`Successfully created ${snapshots.length} new snapshots`);
     
     // Cleanup old snapshots (keep only last 120 days)
     const cutoffDate = new Date();
@@ -114,7 +106,6 @@ export async function POST(request: Request) {
       }
     });
     
-    console.log(`Cleaned up ${deletedCount.count} old snapshots (older than 120 days)`);
     
     return NextResponse.json({
       success: true,
@@ -125,7 +116,6 @@ export async function POST(request: Request) {
     });
     
   } catch (error) {
-    console.error('Snapshot collection error:', error);
     return NextResponse.json(
       { error: 'Failed to collect funding snapshots', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -171,8 +161,7 @@ export async function GET() {
       availableDates: Object.keys(snapshotsByDate).sort().reverse()
     });
     
-  } catch (error) {
-    console.error('Snapshot retrieval error:', error);
+  } catch {
     return NextResponse.json(
       { error: 'Failed to retrieve snapshots' },
       { status: 500 }

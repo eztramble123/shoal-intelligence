@@ -63,8 +63,7 @@ export async function GET(request: NextRequest) {
     })
 
     // Send welcome email (don't block the response if it fails)
-    sendWelcomeEmail(user.email, user.name || undefined).catch(error => {
-      console.error('Failed to send welcome email:', error)
+    sendWelcomeEmail().catch(() => {
     })
 
     // Redirect to login with success message
@@ -72,8 +71,7 @@ export async function GET(request: NextRequest) {
       new URL('/login?verified=true&message=Email verified successfully! You can now sign in.', request.url)
     )
 
-  } catch (error) {
-    console.error('Email verification error:', error)
+  } catch {
     return NextResponse.redirect(
       new URL('/login?error=An error occurred during verification', request.url)
     )
@@ -135,14 +133,13 @@ export async function POST(request: NextRequest) {
 
     // Send verification email
     const { sendVerificationEmail } = await import('@/lib/email')
-    await sendVerificationEmail(user.email, token)
+    await sendVerificationEmail()
 
     return NextResponse.json({
       message: 'New verification email sent successfully.',
     })
 
-  } catch (error) {
-    console.error('Resend verification error:', error)
+  } catch {
     return NextResponse.json(
       { error: 'Failed to resend verification email' },
       { status: 500 }

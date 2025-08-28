@@ -58,7 +58,6 @@ export default function Dashboard() {
       setParityData(data);
       setBaseExchange(data.baseExchange || 'binance');
     } catch (error) {
-      console.error('Parity data error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch parity data';
       
       // Check if it's a network error
@@ -96,7 +95,6 @@ export default function Dashboard() {
       
       setFundingData(data);
     } catch (error) {
-      console.error('Funding data error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch funding data';
       
       if (isNetworkError(error)) {
@@ -133,7 +131,6 @@ export default function Dashboard() {
       
       setListingsData(data);
     } catch (error) {
-      console.error('Listings data error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to fetch listings data';
       
       if (isNetworkError(error)) {
@@ -174,9 +171,8 @@ export default function Dashboard() {
           // User hasn't selected a plan, redirect to pricing
           router.push('/pricing');
         }
-      } catch (error) {
-        console.error('Error checking user plan:', error);
-        // If there's an error, still allow access but log it
+      } catch {
+        // If there's an error, still allow access
       }
     };
 

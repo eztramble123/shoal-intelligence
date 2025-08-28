@@ -48,8 +48,6 @@ const RecentListingsTrackerFeed = () => {
       
       setListingsData(data);
     } catch (err) {
-      console.error('Error fetching listings data:', err);
-      
       if (isNetworkError(err)) {
         setError('Network connection failed. Please check your internet connection and try again.');
       } else if (err instanceof Error && err.message.includes('timeout')) {

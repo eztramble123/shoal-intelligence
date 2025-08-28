@@ -61,8 +61,8 @@ const TokenListingDashboard = () => {
         const parsedTokens = JSON.parse(savedHiddenTokens);
         setHiddenTokens(new Set(parsedTokens));
       }
-    } catch (error) {
-      console.error('Error loading hidden tokens from localStorage:', error);
+    } catch {
+      // Error loading hidden tokens from localStorage
     }
   }, []);
 
@@ -70,8 +70,8 @@ const TokenListingDashboard = () => {
   useEffect(() => {
     try {
       localStorage.setItem('hiddenTokens', JSON.stringify(Array.from(hiddenTokens)));
-    } catch (error) {
-      console.error('Error saving hidden tokens to localStorage:', error);
+    } catch {
+      // Error saving hidden tokens to localStorage
     }
   }, [hiddenTokens]);
 
@@ -138,7 +138,6 @@ const TokenListingDashboard = () => {
       setCompareExchanges(prev => prev.filter(e => e !== newPrimary));
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while fetching parity data';
-      console.error('Error fetching parity data:', errorMessage);
       setError(errorMessage);
       setParityData(null);
     } finally {

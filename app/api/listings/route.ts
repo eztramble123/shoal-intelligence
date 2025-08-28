@@ -123,8 +123,7 @@ export async function GET(request: Request) {
     
     return NextResponse.json(periodFilteredData);
     
-  } catch (error) {
-    console.error('Listings API error:', error);
+  } catch {
     
     return NextResponse.json(
       { error: 'Failed to fetch listings data' },

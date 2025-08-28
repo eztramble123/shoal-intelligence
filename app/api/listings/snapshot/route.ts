@@ -9,14 +9,12 @@ const prisma = new PrismaClient();
 // This should be called daily by a cron job or scheduler
 export async function POST(request: Request) {
   try {
-    console.log('=== DAILY LISTING SNAPSHOT COLLECTION ===');
     
     // Verify authorization
     const authHeader = request.headers.get('authorization');
     const expectedKey = process.env.CRON_SECRET;
     
     if (!expectedKey) {
-      console.error('CRON_SECRET environment variable is required but not set');
       return NextResponse.json(
         { error: 'Server configuration error' },
         { status: 500 }
@@ -38,7 +36,6 @@ export async function POST(request: Request) {
     }
     
     // Fetch fresh data from Blake AI
-    console.log('Fetching data from Blake AI listings endpoint...');
     const response = await fetch('https://api.withblake.ai/listings', {
       method: 'POST',
       headers: {
@@ -55,11 +52,9 @@ export async function POST(request: Request) {
     }
     
     const rawData: RawListingRecord[] = await response.json();
-    console.log(`Fetched ${rawData.length} listing records from Blake AI`);
     
     // Process the data to get listing metrics
     const processedData = processListingsData(rawData);
-    console.log(`Processed data into ${processedData.processedListings.length} unique listings`);
     
     // Get today's date (without time for consistency)
     const today = new Date();
@@ -80,7 +75,6 @@ export async function POST(request: Request) {
       });
       
       if (existingSnapshot) {
-        console.log(`Snapshot already exists for ${listing.ticker} on ${today.toISOString().split('T')[0]}`);
         continue;
       }
       
@@ -101,10 +95,8 @@ export async function POST(request: Request) {
       });
       
       snapshots.push(snapshot);
-      console.log(`Created snapshot for ${listing.ticker}: ${listing.exchangesCount} exchanges`);
     }
     
-    console.log(`Successfully created ${snapshots.length} new snapshots`);
     
     // Cleanup old snapshots (keep only last 120 days)
     const cutoffDate = new Date();
@@ -118,7 +110,6 @@ export async function POST(request: Request) {
       }
     });
     
-    console.log(`Cleaned up ${deletedCount.count} old snapshots (older than 120 days)`);
     
     return NextResponse.json({
       success: true,
@@ -129,7 +120,6 @@ export async function POST(request: Request) {
     });
     
   } catch (error) {
-    console.error('Listing snapshot collection error:', error);
     return NextResponse.json(
       { error: 'Failed to collect listing snapshots', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -177,8 +167,7 @@ export async function GET() {
       availableDates: Object.keys(snapshotsByDate).sort().reverse()
     });
     
-  } catch (error) {
-    console.error('Snapshot retrieval error:', error);
+  } catch {
     return NextResponse.json(
       { error: 'Failed to retrieve snapshots' },
       { status: 500 }

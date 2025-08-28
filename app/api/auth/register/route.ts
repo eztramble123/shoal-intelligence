@@ -61,7 +61,7 @@ export async function POST(request: NextRequest) {
           },
         })
 
-        await sendVerificationEmail(existingUser.email, token)
+        await sendVerificationEmail()
         
         return NextResponse.json({
           message: 'Account exists but not verified. New verification email sent.',
@@ -100,10 +100,9 @@ export async function POST(request: NextRequest) {
     })
 
     // Send verification email
-    const emailResult = await sendVerificationEmail(user.email, token)
+    const emailResult = await sendVerificationEmail()
     
     if (!emailResult.success) {
-      console.error('Failed to send verification email:', emailResult.error)
       // Continue registration even if email fails - user can request new verification
     }
 
@@ -117,8 +116,7 @@ export async function POST(request: NextRequest) {
       requiresVerification: true,
     })
 
-  } catch (error) {
-    console.error('Registration error:', error)
+  } catch {
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

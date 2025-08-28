@@ -14,7 +14,6 @@ export async function GET() {
       pricesCount: prices.data.length
     })
   } catch (error) {
-    console.error('Stripe test error:', error)
     return NextResponse.json(
       { 
         success: false, 

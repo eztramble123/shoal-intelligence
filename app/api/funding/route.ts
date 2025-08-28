@@ -43,18 +43,11 @@ export async function GET() {
     }
     
     const rawData: RawFundingRecord[] = await response.json();
-    console.log('✅ Successfully fetched data from Blake AI API');
-    console.log('Raw data records count:', rawData.length);
-    if (rawData.length > 0) {
-      console.log('Sample raw record:', rawData[0]);
-    }
     
     // Process the data
     const processedData = processFundingData(rawData);
-    console.log('✅ Successfully processed Blake AI data');
     
     // Get real trend data for trending categories (7-day comparison)
-    console.log('🔄 Calculating trending data...');
     const trendData = await calculateTrendData(7);
     
     // Merge trend data with trending categories
@@ -77,12 +70,10 @@ export async function GET() {
       trendingCategories: trendingCategoriesWithTrends
     };
     
-    console.log('✅ Successfully enhanced data with real trend information');
     
     return NextResponse.json(enhancedData);
     
   } catch (error) {
-    console.error('Funding API error:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred while fetching funding data';
     

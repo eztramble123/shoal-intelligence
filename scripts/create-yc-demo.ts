@@ -22,8 +22,6 @@ async function createYCDemoUser() {
     })
     
     if (existingUser) {
-      console.log('✅ YC demo user already exists')
-      
       // Update password and ensure email is verified
       const hashedPassword = await bcrypt.hash(password, 12)
       await prisma.user.update({
@@ -36,7 +34,6 @@ async function createYCDemoUser() {
         },
       })
       
-      console.log('✅ YC demo user password updated')
       return
     }
     
@@ -54,14 +51,7 @@ async function createYCDemoUser() {
       },
     })
     
-    console.log('✅ YC demo user created successfully!')
-    console.log('Email:', email)
-    console.log('Username: yc_demo')
-    console.log('Password: ShoalDemo2025!')
-    console.log('User ID:', user.id)
-    
   } catch (error) {
-    console.error('❌ Error creating YC demo user:', error)
     process.exit(1)
   } finally {
     await prisma.$disconnect()

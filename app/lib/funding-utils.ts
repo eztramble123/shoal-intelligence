@@ -125,7 +125,6 @@ export const getCategoryColor = (category: string): string => {
 
 // Process 90-day funding categories for treemap
 export const process90DayFundingCategories = (processedRecords: ProcessedFundingRecord[]): CategoryMetrics[] => {
-  console.log('=== PROCESSING 90-DAY FUNDING CATEGORIES ===');
   
   // Filter records to last 90 days
   const ninetyDaysAgo = new Date();
@@ -136,9 +135,6 @@ export const process90DayFundingCategories = (processedRecords: ProcessedFunding
     return recordDate >= ninetyDaysAgo;
   });
   
-  console.log('Total records:', processedRecords.length);
-  console.log('90-day records:', last90DaysRecords.length);
-  console.log('90 days ago cutoff:', ninetyDaysAgo);
   
   // All sectors to ensure complete coverage
   const allSectors = [
@@ -177,9 +173,6 @@ export const process90DayFundingCategories = (processedRecords: ProcessedFunding
     }))
     .sort((a, b) => b.totalAmount - a.totalAmount);
   
-  console.log('90-day categories with funding:', last90DaysCategories.filter(c => c.totalAmount > 0).map(c => `${c.category}: ${c.totalAmountDisplay} (${c.dealCount} deals)`));
-  console.log('90-day categories with zero funding:', last90DaysCategories.filter(c => c.totalAmount === 0).map(c => c.category));
-  console.log('Total 90-day funding:', formatAmount(total90DayFunding));
   
   return last90DaysCategories;
 };
@@ -195,7 +188,6 @@ export const calculateTrendData = async (periodDays: number = 7): Promise<Record
     const { PrismaClient } = await import('@prisma/client');
     const prisma = new PrismaClient();
     
-    console.log(`=== CALCULATING ${periodDays}-DAY TRENDS ===`);
     
     // Get current period (last N days)
     const today = new Date();
@@ -213,8 +205,6 @@ export const calculateTrendData = async (periodDays: number = 7): Promise<Record
     previousPeriodStart.setDate(previousPeriodStart.getDate() - periodDays);
     previousPeriodStart.setHours(0, 0, 0, 0);
     
-    console.log('Current period:', currentPeriodStart.toISOString().split('T')[0], 'to', today.toISOString().split('T')[0]);
-    console.log('Previous period:', previousPeriodStart.toISOString().split('T')[0], 'to', previousPeriodEnd.toISOString().split('T')[0]);
     
     // Get current period data
     const currentPeriodData = await prisma.fundingSnapshot.groupBy({
@@ -250,7 +240,6 @@ export const calculateTrendData = async (periodDays: number = 7): Promise<Record
       }
     });
     
-    console.log(`Found ${currentPeriodData.length} sectors in current period, ${previousPeriodData.length} in previous period`);
     
     // Create lookup maps
     const currentMap = new Map(currentPeriodData.map(item => [item.sector, item._avg.totalAmount || 0]));
@@ -301,14 +290,12 @@ export const calculateTrendData = async (periodDays: number = 7): Promise<Record
         previousAmount
       };
       
-      console.log(`${sector}: ${trendDisplay} (${trendDirection}) - Current: $${(currentAmount/1e6).toFixed(1)}M, Previous: $${(previousAmount/1e6).toFixed(1)}M`);
     }
     
     await prisma.$disconnect();
     return trends;
     
-  } catch (error) {
-    console.error('Trend calculation error:', error);
+  } catch {
     // Return neutral trends as fallback
     const fallbackTrends: Record<string, {
       trendPercentage: number;
@@ -337,17 +324,10 @@ export const calculateTrendData = async (periodDays: number = 7): Promise<Record
 
 // Process all funding data for dashboard
 export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboardData => {
-  console.log('=== PROCESSING FUNDING DATA ===');
-  console.log('Raw records count:', rawData.length);
   
   // Process all records
   const processedRecords = rawData.map(processFundingRecord);
   
-  console.log('Processed records count:', processedRecords.length);
-  if (processedRecords.length > 0) {
-    console.log('Sample processed record:', processedRecords[0]);
-    console.log('Categories in data:', [...new Set(processedRecords.map(r => r.classifiedCategory))]);
-  }
   
   // Filter last 30 days
   const thirtyDaysAgo = new Date();
@@ -416,10 +396,6 @@ export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboar
     }))
     .sort((a, b) => b.totalAmount - a.totalAmount);
   
-  console.log('=== TRENDING CATEGORIES PROCESSED ===');
-  console.log('Categories with funding:', trendingCategories.filter(c => c.totalAmount > 0).map(c => `${c.category}: ${c.totalAmountDisplay} (${c.dealCount} deals)`));
-  console.log('Categories with zero funding:', trendingCategories.filter(c => c.totalAmount === 0).map(c => c.category));
-  console.log('Total raised across all categories:', formatAmount(totalRaisedNum));
   
   // Process 90-day categories for treemap
   const last90DaysCategories = process90DayFundingCategories(processedRecords);

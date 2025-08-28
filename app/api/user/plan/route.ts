@@ -24,7 +24,6 @@ export async function GET() {
       planSelectedAt: user?.planSelectedAt || null
     })
   } catch (error) {
-    console.error('Error fetching user plan:', error)
     return NextResponse.json(
       { 
         error: 'Failed to fetch plan',
@@ -70,7 +69,6 @@ export async function POST(request: Request) {
       message: `Plan updated to ${planType}`
     })
   } catch (error) {
-    console.error('Error updating user plan:', error)
     return NextResponse.json(
       { 
         error: 'Failed to update plan',

@@ -52,7 +52,6 @@ export const parseAllExchanges = (exchanges: string | string[] | unknown): strin
     return exchanges.split(',').map(e => e.trim()).filter(Boolean);
   }
   
-  console.warn('[parseAllExchanges] Unexpected format:', typeof exchanges, exchanges);
   return [];
 };
 
@@ -85,23 +84,10 @@ export const getExchangeAvailability = (raw: RawParityRecord, exchangeKey: Excha
   // Use only allExchanges field for consistent data source across all exchanges
   const allExchanges = parseAllExchanges(raw.allExchanges);
   
-  // Debug logging for first few tokens and all OKX checks to verify data
-  const shouldLog = (raw.symbol && ['BTC', 'ETH', 'USDT', 'JUP', 'USDC'].includes(raw.symbol)) || exchangeKey === 'okx';
   
-  if (shouldLog) {
-    console.log(`[DEBUG] ${raw.symbol || 'unknown'} - ${exchangeKey}:`, {
-      allExchanges_raw: raw.allExchanges,
-      allExchanges_parsed: allExchanges,
-      config_display: config.display,
-      config_aliases: 'aliases' in config ? config.aliases : undefined
-    });
-  }
   
   const result = allExchanges.some(exchange => matchesExchangeAlias(exchange, config));
   
-  if (shouldLog) {
-    console.log(`[DEBUG] ${raw.symbol || 'unknown'} - ${exchangeKey} result:`, result);
-  }
   
   return result;
 };
@@ -158,10 +144,6 @@ export const calculateCoverage = (
     { name: 'MEXC', key: 'mexc' as keyof typeof exchanges }
   ];
   
-  // Debug: Always log exchange list length to verify it includes all 9 exchanges
-  if (exchangeList.length !== 9) {
-    console.error(`[COVERAGE ERROR] Exchange list has ${exchangeList.length} exchanges, expected 9`);
-  }
 
   // Check if token is on base exchange
   const isOnBase = exchanges[baseExchange as keyof typeof exchanges] || false;

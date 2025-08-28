@@ -71,14 +71,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ url: checkoutSession.url })
   } catch (error) {
-    console.error('Stripe checkout error:', error)
     
     // Return detailed error for debugging
     const errorMessage = error instanceof Error ? error.message : 'Unknown error'
-    console.error('Error details:', {
-      message: errorMessage,
-      stack: error instanceof Error ? error.stack : undefined
-    })
     
     return NextResponse.json(
       { 

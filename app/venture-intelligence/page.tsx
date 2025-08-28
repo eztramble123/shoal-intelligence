@@ -55,7 +55,7 @@ const CustomTreemapContent = (props: TreemapContentProps) => {
   const { x, y, width, height, name, value, fill, payload, ...rest } = props;
   
   // Debug what properties are actually available
-  console.log('All treemap props:', props);
+  // console.log('All treemap props:', props);
   
   return (
     <g>
@@ -221,7 +221,6 @@ const VentureIntelligenceDashboard = () => {
       setError(null);
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred while fetching funding data';
-      console.error('Error fetching funding data:', errorMessage);
       setError(errorMessage);
       setFundingData(null);
     } finally {
@@ -242,51 +241,34 @@ const VentureIntelligenceDashboard = () => {
 
   // Get recent 90-day funding rounds
   const recent90DayRounds = fundingData && fundingData.latestRounds ? (() => {
-    console.log('=== DEBUGGING FUNDING DATA ===');
-    console.log('fundingData exists:', !!fundingData);
-    console.log('fundingData.latestRounds exists:', !!fundingData.latestRounds);
-    console.log('fundingData.latestRounds length:', fundingData.latestRounds?.length ?? 0);
     
     if (Array.isArray(fundingData.latestRounds) && fundingData.latestRounds.length > 0) {
-      console.log('First 3 rounds:', fundingData.latestRounds.slice(0, 3).map(r => ({
-        name: r.name,
-        date: r.date,
-        dateDisplay: r.dateDisplay,
-        dateType: typeof r.date,
-        isValidDate: r.date instanceof Date && !isNaN(r.date.getTime())
-      })));
+      // First 3 rounds data available
     }
 
     const ninetyDaysAgo = new Date();
     ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-    console.log('90 days ago:', ninetyDaysAgo);
-    console.log('Today:', new Date());
 
     if (!Array.isArray(fundingData.latestRounds)) {
-      console.error('latestRounds is not an array:', fundingData.latestRounds);
       return [];
     }
 
     const filteredRounds = fundingData.latestRounds
       .filter(round => {
         if (!round || !round.date) {
-          console.warn('Invalid round data:', round);
           return false;
         }
         
         // Convert string date to Date object for proper comparison
         const roundDate = new Date(round.date);
         if (isNaN(roundDate.getTime())) {
-          console.warn('Invalid date for round:', round.name, round.date);
           return false;
         }
         
         const isWithin90Days = roundDate >= ninetyDaysAgo;
-        console.log(`Round "${round.name}": date=${round.date}, roundDate=${roundDate}, within90Days=${isWithin90Days}`);
         return isWithin90Days;
       });
     
-    console.log('Filtered rounds count (within 90 days):', filteredRounds.length);
     
     const mappedRounds = filteredRounds
       .slice(0, 8)
@@ -315,8 +297,6 @@ const VentureIntelligenceDashboard = () => {
         };
       });
     
-    console.log('Final mapped rounds:', mappedRounds);
-    console.log('=== END DEBUG ===');
     
     return mappedRounds;
   })() : [
@@ -459,9 +439,6 @@ const VentureIntelligenceDashboard = () => {
   // Prepare treemap data from last90DaysCategories - show all 15 sectors (90-day filtered)
   const treemapData = fundingData && Array.isArray(fundingData.last90DaysCategories) ? 
     (() => {
-      console.log('=== PREPARING 90-DAY TREEMAP DATA ===');
-      console.log('fundingData.last90DaysCategories:', fundingData.last90DaysCategories);
-      console.log('Total 90-day categories available:', fundingData.last90DaysCategories.length);
       
       const data = fundingData.last90DaysCategories
         .filter(cat => cat && typeof cat.category === 'string')
@@ -476,7 +453,6 @@ const VentureIntelligenceDashboard = () => {
           totalAmount: typeof cat.totalAmount === 'number' ? cat.totalAmount : 0
         }));
       
-      console.log('90-day treemap data prepared:', data.map(d => `${d.name}: $${(d.totalAmount / 1e6).toFixed(0)}M (${d.deals} deals)`));
       return data;
     })() :
     [

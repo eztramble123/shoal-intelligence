@@ -60,8 +60,8 @@ export default function ProfilePage() {
           setUserData(data)
           setBaseExchange(data.baseExchange || 'binance')
         }
-      } catch (error) {
-        console.error('Error fetching profile:', error)
+      } catch {
+        // Error fetching profile
       } finally {
         setLoading(false)
       }
@@ -94,8 +94,7 @@ export default function ProfilePage() {
           type: 'error' 
         })
       }
-    } catch (error) {
-      console.error('Error saving settings:', error)
+    } catch {
       setToast({ 
         message: 'Failed to save settings. Please try again.', 
         type: 'error' 

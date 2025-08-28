@@ -67,10 +67,9 @@ export async function POST(request: NextRequest) {
     })
 
     // Send password reset email
-    const emailResult = await sendPasswordResetEmail(user.email, token)
+    const emailResult = await sendPasswordResetEmail()
 
     if (!emailResult.success) {
-      console.error('Failed to send password reset email:', emailResult.error)
       return NextResponse.json(
         { error: 'Failed to send password reset email. Please try again.' },
         { status: 500 }
@@ -79,8 +78,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({ message: successMessage })
 
-  } catch (error) {
-    console.error('Forgot password error:', error)
+  } catch {
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

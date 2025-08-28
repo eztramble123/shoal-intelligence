@@ -15,7 +15,6 @@ const testExchanges = {
 };
 
 const coverage = calculateCoverage(testExchanges);
-console.log('Coverage for token with all exchanges:', coverage);
 
 // Test token with some exchanges false
 const testExchanges2 = {
@@ -31,4 +30,3 @@ const testExchanges2 = {
 };
 
 const coverage2 = calculateCoverage(testExchanges2);
-console.log('Coverage for token missing coinbase:', coverage2);
