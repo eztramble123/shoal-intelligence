@@ -280,6 +280,60 @@ export const calculateListingTrends = async (periodDays: number): Promise<Record
   }
 };
 
+// Process listing events for a specific time period
+// Returns tokens with their exchange count ONLY for that period
+export const processListingEventsForPeriod = (
+  listingEvents: ProcessedListingRecord[], 
+  periodStartDate: Date
+): ProcessedListingRecord[] => {
+  // Filter listing events to only those within the period
+  const periodListingEvents = listingEvents.filter(event => {
+    return event.listingDate >= periodStartDate;
+  });
+
+  // Group by ticker and collect unique exchanges within the period
+  const tokenData: Record<string, {
+    events: ProcessedListingRecord[];
+    exchanges: Set<string>;
+    latestEvent: ProcessedListingRecord;
+  }> = {};
+
+  periodListingEvents.forEach(event => {
+    if (!tokenData[event.ticker]) {
+      tokenData[event.ticker] = {
+        events: [],
+        exchanges: new Set(),
+        latestEvent: event
+      };
+    }
+    
+    tokenData[event.ticker].events.push(event);
+    
+    // Add the exchange from this specific listing event
+    if (event.primaryExchange) {
+      tokenData[event.ticker].exchanges.add(event.primaryExchange);
+    }
+    
+    // Keep the most recent event as the representative
+    if (event.listingDate > tokenData[event.ticker].latestEvent.listingDate) {
+      tokenData[event.ticker].latestEvent = event;
+    }
+  });
+
+  // Convert to ProcessedListingRecord array with period-specific exchange counts
+  return Object.values(tokenData).map(tokenInfo => {
+    const latestEvent = tokenInfo.latestEvent;
+    const periodExchanges = Array.from(tokenInfo.exchanges);
+    
+    return {
+      ...latestEvent,
+      exchanges: periodExchanges,
+      exchangesCount: periodExchanges.length,
+      exchangesDisplay: periodExchanges.join(', ')
+    };
+  });
+};
+
 // Generate time-period specific metrics
 export const generatePeriodMetrics = (listings: ProcessedListingRecord[]): {
   totalNewListings: number;
@@ -303,9 +357,19 @@ export const generatePeriodMetrics = (listings: ProcessedListingRecord[]): {
   };
 };
 
-// Process listings data with Retool-style deduplication and time-based analysis
+// Process listings data keeping all listing events for proper period analysis
 export const processListingsData = (rawData: RawListingRecord[]): ListingsDashboardData => {
-  // Retool-style deduplication logic
+  // Process ALL listing events - don't deduplicate by ticker
+  // Each raw record represents a separate listing event that should be preserved
+  const allListingEvents: ProcessedListingRecord[] = [];
+
+  rawData.forEach(row => {
+    if (!row.ticker) return; // Skip invalid records
+    allListingEvents.push(processListingRecord(row));
+  });
+
+  // For backwards compatibility and overall stats, create a deduplicated result
+  // This will be used for general metrics but NOT for period-specific analysis
   const seen: Record<string, boolean> = {};
   const result: ProcessedListingRecord[] = [];
 
@@ -348,7 +412,8 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
     listedOn: token.exchangesDisplay,
     lastUpdated: token.lastUpdatedDisplay,
     priceChange: token.priceChangePct24h,
-    volume: token.volume24hDisplay
+    volume: token.volume24hDisplay,
+    coingeckoUrl: token.coingeckoUrl
   }));
 
   // Generate live listings from recent data
@@ -404,10 +469,24 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
   last7Days.setDate(last7Days.getDate() - 7);
   const last7DayListings = result.filter(token => token.listingDate >= last7Days);
 
-  // Generate time-based period data needed for fallback
-  const last30DayListings = filterNewListings(result, 30);
+  // Generate time-based period data using individual listing events
+  // Create period start dates
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  
+  const ninetyDaysAgo = new Date();
+  ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  
+  const yearStart = new Date();
+  yearStart.setMonth(0, 1); // January 1st
+  yearStart.setHours(0, 0, 0, 0);
 
-  // Fastest growing tokens with fallback logic
+  // Process period-specific data using the new function
+  const last30DayListings = processListingEventsForPeriod(allListingEvents, thirtyDaysAgo);
+  const last90DayListings = processListingEventsForPeriod(allListingEvents, ninetyDaysAgo);
+  const ytdListings = processListingEventsForPeriod(allListingEvents, yearStart);
+
+  // Fastest growing tokens with fallback logic (using deduplicated data for compatibility)
   let fastestGrowingSource = last24HourListings;
   let timeframeLabel = '24h';
 
@@ -445,25 +524,17 @@ export const processListingsData = (rawData: RawListingRecord[]): ListingsDashbo
       timeframe: timeframeLabel
     }));
 
-  // Newest listings (sorted by actual listing date)
-  const newestListings = result
+  // Newest listings (sorted by actual listing date) - use all events for most recent
+  const newestListings = allListingEvents
     .sort((a, b) => b.listingDate.getTime() - a.listingDate.getTime())
     .slice(0, 4)
     .map(token => ({
       symbol: token.ticker,
-      exchange: `on ${token.exchanges[0] || 'Unknown'}`,
+      exchange: `on ${token.primaryExchange || token.exchanges[0] || 'Unknown'}`,
       time: `${Math.floor((new Date().getTime() - token.listingDate.getTime()) / (1000 * 60))}m ago`
     }));
 
-  // Generate time-based period data
-  const last90DayListings = filterNewListings(result, 90);
-  
-  // Calculate YTD (from January 1st to now)
-  const yearStart = new Date();
-  yearStart.setMonth(0, 1); // January 1st
-  yearStart.setHours(0, 0, 0, 0);
-  const ytdListings = result.filter(listing => listing.listingDate >= yearStart);
-  
+  // Generate period metrics from the processed period data
   const last30DaysData = generatePeriodMetrics(last30DayListings);
   const last90DaysData = generatePeriodMetrics(last90DayListings);
   const yearToDateData = generatePeriodMetrics(ytdListings);
