@@ -46,6 +46,27 @@ function formatTime(dateValue: string | Date): string {
   });
 }
 
+// Format Unix timestamp to MONTH/DAY/YEAR format
+export const formatListingDate = (unixTimestamp: number): string => {
+  // Ensure we have a valid Unix timestamp (check if it's in seconds)
+  // If timestamp is already in milliseconds (13 digits), divide by 1000 first
+  const timestamp = unixTimestamp > 9999999999 ? unixTimestamp : unixTimestamp * 1000;
+  const date = new Date(timestamp);
+  
+  // Verify the conversion worked
+  if (isNaN(date.getTime())) {
+    console.warn('Invalid timestamp conversion:', unixTimestamp);
+    return 'Invalid Date';
+  }
+  
+  // Format as MONTH/DAY/YEAR (e.g., 8/22/2025)
+  return date.toLocaleDateString('en-US', {
+    month: 'numeric',
+    day: 'numeric',
+    year: 'numeric'
+  });
+};
+
 // Format large numbers for display
 export const formatNumber = (num: number | null): string => {
   if (num === null || num === undefined) return '$0';
@@ -107,15 +128,18 @@ export const processListingRecord = (raw: RawListingRecord): ProcessedListingRec
   const exchanges = parseExchanges(raw.all_exchanges);
   const { momentum, color } = calculateMomentum(raw.price_change_pct_24h);
   
-  // Convert Unix timestamp to Date object for listing date
-  const listingDateObj = new Date(raw.listingDate * 1000);
+  // Use scraped_at as the primary date since listingDate can be unreliable
+  // scraped_at is already a string in ISO format, convert to Date
+  const scrapedAtDate = new Date(raw.scraped_at);
+  // For listingDate, handle the Unix timestamp conversion
+  const listingDateObj = raw.listingDate ? new Date(raw.listingDate * 1000) : scrapedAtDate;
   
   return {
     ticker: raw.ticker,
     id: raw.id,
-    name: raw.name,
+    name: raw.name || raw.symbol || raw.ticker,
     symbol: raw.symbol,
-    displayName: `${raw.ticker} - ${raw.name}`,
+    displayName: `${raw.ticker} - ${raw.name || raw.symbol || 'Unknown'}`,
     sourceMessage: raw.sourceMessage,
     price: raw.price_usd,
     priceDisplay: formatPrice(raw.price_usd),
@@ -130,10 +154,10 @@ export const processListingRecord = (raw: RawListingRecord): ProcessedListingRec
     exchangesDisplay: exchanges.join(', '),
     lastUpdated: new Date(raw.last_updated),
     lastUpdatedDisplay: formatDate(raw.last_updated),
-    scrapedAt: new Date(raw.scraped_at),
-    scrapedAtDisplay: formatDate(raw.scraped_at),
-    listingDate: listingDateObj,
-    listingDateDisplay: formatDate(listingDateObj),
+    scrapedAt: scrapedAtDate,
+    scrapedAtDisplay: formatDate(scrapedAtDate),
+    listingDate: scrapedAtDate, // Use scraped_at as primary listing date for filtering
+    listingDateDisplay: formatDate(scrapedAtDate),
     primaryExchange: raw.exchange,
     listingType: raw.type,
     platforms: raw.platforms,

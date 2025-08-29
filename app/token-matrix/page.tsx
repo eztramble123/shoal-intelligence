@@ -94,11 +94,23 @@ const TokenListingDashboard = () => {
         const response = await fetch('/api/parity');
         const data = await response.json();
         setParityData(data);
-        // Set primary exchange from API data, fallback to 'Binance' if not provided
-        const newPrimary = data.baseExchange || 'Binance';
-        setPrimaryExchange(newPrimary);
-        // Ensure the new primary is not in compare exchanges to prevent self-comparison
-        setCompareExchanges(prev => prev.filter(e => e !== newPrimary));
+        
+        // Set primary exchange - defaults to Coinbase for listing parity analysis
+        const defaultPrimary = 'Coinbase'; // Default primary for comparison
+        setPrimaryExchange(defaultPrimary);
+        
+        // Get user's base exchange preference from API data
+        const userBaseExchange = data.baseExchange || 'Binance';
+        
+        // If user's base exchange is different from primary, auto-select it for comparison
+        if (userBaseExchange !== defaultPrimary) {
+          // Format the exchange name to match the options (capitalize first letter)
+          const formattedExchange = userBaseExchange.charAt(0).toUpperCase() + userBaseExchange.slice(1).toLowerCase();
+          setCompareExchanges([formattedExchange]);
+        } else {
+          // If they're the same, start with no comparison
+          setCompareExchanges([]);
+        }
       } catch (error) {
         console.error('Error fetching parity data:', error);
       } finally {
@@ -532,29 +544,46 @@ const TokenListingDashboard = () => {
                     <div className={styles.exchangeList}>
                       {exchanges.filter(exchange => 
                         exchange.toLowerCase().includes(debouncedPrimarySearch.toLowerCase())
-                      ).map(exchange => (
-                        <div
-                          key={exchange}
-                          onClick={() => {
-                            handlePrimarySelection(exchange);
-                            setPrimaryDropdownOpen(false);
-                            setPrimarySearchTerm('');
-                          }}
-                          className={`${styles.exchangeItem} ${styles.primaryHover}`}
-                        >
-                          <div className={styles.exchangeItemContent}>
-                            <div className={styles.hamburgerIcon}>
-                              <div className={styles.hamburgerLine}></div>
-                              <div className={styles.hamburgerLine}></div>
-                              <div className={styles.hamburgerLine}></div>
+                      ).map(exchange => {
+                        const isCurrentPrimary = primaryExchange === exchange;
+                        const isInCompare = compareExchanges.includes(exchange);
+                        
+                        return (
+                          <div
+                            key={exchange}
+                            onClick={() => {
+                              if (!isInCompare) {
+                                handlePrimarySelection(exchange);
+                                setPrimaryDropdownOpen(false);
+                                setPrimarySearchTerm('');
+                              }
+                            }}
+                            className={`${styles.exchangeItem} ${styles.primaryHover}`}
+                            style={{
+                              opacity: isInCompare ? 0.5 : 1,
+                              cursor: isInCompare ? 'not-allowed' : 'pointer'
+                            }}
+                            title={isInCompare ? 'Already selected for comparison' : ''}
+                          >
+                            <div className={styles.exchangeItemContent}>
+                              <div className={styles.hamburgerIcon}>
+                                <div className={styles.hamburgerLine}></div>
+                                <div className={styles.hamburgerLine}></div>
+                                <div className={styles.hamburgerLine}></div>
+                              </div>
+                              <span className={styles.exchangeName}>{exchange}</span>
                             </div>
-                            <span className={styles.exchangeName}>{exchange}</span>
+                            {isCurrentPrimary && (
+                              <span className={styles.selectedIndicator}>✓</span>
+                            )}
+                            {isInCompare && (
+                              <span style={{ fontSize: '10px', color: '#9ca3af', marginLeft: '8px' }}>
+                                (in compare)
+                              </span>
+                            )}
                           </div>
-                          {primaryExchange === exchange && (
-                            <span className={styles.selectedIndicator}>✓</span>
-                          )}
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -617,9 +646,43 @@ const TokenListingDashboard = () => {
                     {/* Exchange List */}
                     <div style={{ maxHeight: '240px', overflowY: 'auto' }}>
                       {exchanges.filter(exchange => 
-                        exchange.toLowerCase().includes(debouncedCompareSearch.toLowerCase()) &&
-                        exchange !== primaryExchange
-                      ).map(exchange => (
+                        exchange.toLowerCase().includes(debouncedCompareSearch.toLowerCase())
+                      ).map(exchange => {
+                        const isPrimary = exchange === primaryExchange;
+                        if (isPrimary) {
+                          // Show disabled state for primary exchange
+                          return (
+                            <div
+                              key={exchange}
+                              style={{
+                                padding: '14px 16px',
+                                cursor: 'not-allowed',
+                                borderBottom: '1px solid #212228',
+                                opacity: 0.4,
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between'
+                              }}
+                            >
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <div style={{
+                                  display: 'flex',
+                                  flexDirection: 'column',
+                                  gap: '2px',
+                                  opacity: 0.5
+                                }}>
+                                  <div style={{ width: '12px', height: '2px', background: '#9ca3af', borderRadius: '1px' }}></div>
+                                  <div style={{ width: '12px', height: '2px', background: '#9ca3af', borderRadius: '1px' }}></div>
+                                  <div style={{ width: '12px', height: '2px', background: '#9ca3af', borderRadius: '1px' }}></div>
+                                </div>
+                                <span style={{ color: '#9ca3af', fontSize: '14px' }}>{exchange}</span>
+                              </div>
+                              <span style={{ fontSize: '10px', color: '#10b981', fontWeight: '600' }}>PRIMARY</span>
+                            </div>
+                          );
+                        }
+                        
+                        return (
                         <div
                           key={exchange}
                           onClick={() => {
@@ -677,7 +740,8 @@ const TokenListingDashboard = () => {
                             <span style={{ color: '#ffffff', fontSize: '14px' }}>{exchange}</span>
                           </div>
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -686,8 +750,19 @@ const TokenListingDashboard = () => {
               {/* Reset All Button */}
               <button
                 onClick={() => {
-                  setPrimaryExchange(parityData?.baseExchange || 'Binance');
-                  setCompareExchanges([]);
+                  // Reset to defaults: Coinbase as primary, user's base exchange as compare
+                  const defaultPrimary = 'Coinbase';
+                  setPrimaryExchange(defaultPrimary);
+                  
+                  // Set user's base exchange as compare if different from primary
+                  const userBaseExchange = parityData?.baseExchange || 'Binance';
+                  if (userBaseExchange !== defaultPrimary.toLowerCase()) {
+                    const formattedExchange = userBaseExchange.charAt(0).toUpperCase() + userBaseExchange.slice(1).toLowerCase();
+                    setCompareExchanges([formattedExchange]);
+                  } else {
+                    setCompareExchanges([]);
+                  }
+                  
                   setPrimaryDropdownOpen(false);
                   setCompareDropdownOpen(false);
                   setPrimarySearchTerm('');
@@ -736,7 +811,7 @@ const TokenListingDashboard = () => {
                 </h2>
                 {compareExchanges.length > 0 ? (
                   <p style={{ fontSize: '11px', color: '#9ca3af', margin: '2px 0 0 0' }}>
-                    Tokens on <span style={{ color: '#4869EF' }}>{compareExchanges.join(', ')}</span> but not on{' '}
+                    Listing opportunities: tokens on <span style={{ color: '#4869EF' }}>{compareExchanges.join(', ')}</span> missing from{' '}
                     <span style={{ color: '#10b981' }}>{primaryExchange}</span>
                   </p>
                 ) : (
@@ -776,22 +851,32 @@ const TokenListingDashboard = () => {
                     {displayedCoverageOverview?.tokensMissing ?? 'No data'}
                   </span>
                 </div>
+                <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
+                  {compareExchanges.length > 0 
+                    ? 'Tokens to add'
+                    : 'Not listed'
+                  }
+                </div>
               </div>
               
               <div style={{
                 background: '#13141a',
                 borderRadius: '6px',
                 padding: '12px',
-                border: '1px solid #2a2b35'
+                border: '1px solid #2a2b35',
+                position: 'relative'
               }}>
                 <div style={{
                   fontSize: '10px',
                   color: '#9ca3af',
                   textTransform: 'uppercase',
                   letterSpacing: '0.5px',
-                  marginBottom: '6px'
+                  marginBottom: '6px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
                 }}>
-                  {compareExchanges.length > 0 ? 'OVERLAP' : 'MARKET AVERAGE'}
+                  {compareExchanges.length > 0 ? 'COVERAGE MATCH' : 'MARKET AVERAGE'}
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
@@ -800,25 +885,12 @@ const TokenListingDashboard = () => {
                         return displayedCoverageOverview?.averageCoverage ? 
                           `${displayedCoverageOverview.averageCoverage}%` : 'No data';
                       }
-                      // Calculate coverage match percentage between primary and compare exchanges using full dataset
+                      // Calculate what % of compare exchange tokens are also on primary exchange
                       const allTokens = parityData?.tokens || [];
-                      const totalTokens = allTokens.length || 1;
-                      const matchingTokens = allTokens.filter(token => {
-                        const isOnPrimary = (() => {
-                          switch (primaryExchange.toLowerCase()) {
-                            case 'binance': return token.exchanges.binance;
-                            case 'coinbase': return token.exchanges.coinbase;
-                            case 'kraken': return token.exchanges.kraken;
-                            case 'okx': return token.exchanges.okx;
-                            case 'bybit': return token.exchanges.bybit;
-                            case 'kucoin': return token.exchanges.kucoin;
-                            case 'huobi': return token.exchanges.huobi;
-                            case 'gate.io': return token.exchanges.gate;
-                            case 'mexc': return token.exchanges.mexc;
-                            default: return false;
-                          }
-                        })();
-                        const isOnAnyCompare = compareExchanges.some(exchange => {
+                      
+                      // Get tokens that are on any compare exchange
+                      const tokensOnCompareExchanges = allTokens.filter(token => {
+                        return compareExchanges.some(exchange => {
                           switch (exchange.toLowerCase()) {
                             case 'binance': return token.exchanges.binance;
                             case 'coinbase': return token.exchanges.coinbase;
@@ -832,14 +904,34 @@ const TokenListingDashboard = () => {
                             default: return false;
                           }
                         });
-                        // Both primary and at least one compare have the token
-                        return isOnPrimary && isOnAnyCompare;
+                      });
+                      
+                      // Of those, how many are also on primary?
+                      const matchingTokens = tokensOnCompareExchanges.filter(token => {
+                        switch (primaryExchange.toLowerCase()) {
+                          case 'binance': return token.exchanges.binance;
+                          case 'coinbase': return token.exchanges.coinbase;
+                          case 'kraken': return token.exchanges.kraken;
+                          case 'okx': return token.exchanges.okx;
+                          case 'bybit': return token.exchanges.bybit;
+                          case 'kucoin': return token.exchanges.kucoin;
+                          case 'huobi': return token.exchanges.huobi;
+                          case 'gate.io': return token.exchanges.gate;
+                          case 'mexc': return token.exchanges.mexc;
+                          default: return false;
+                        }
                       }).length;
-                      const percentage = Math.round((Number(matchingTokens) / Number(totalTokens)) * 100);
-                      return isNaN(percentage) ? 'No data' : `${percentage}%`;
+                      const compareTotal = tokensOnCompareExchanges.length || 1;
+                      return `${Math.round((matchingTokens / compareTotal) * 100)}%`;
                     })()
                   }
                   </span>
+                </div>
+                <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
+                  {compareExchanges.length > 0 
+                    ? '% shared listings'
+                    : 'Coverage %'
+                  }
                 </div>
               </div>
               
@@ -863,6 +955,9 @@ const TokenListingDashboard = () => {
                     {displayedCoverageOverview?.exclusiveListings ?? 'No data'}
                   </span>
                 </div>
+                <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
+                  Low coverage tokens
+                </div>
               </div>
 
               <div style={{
@@ -878,7 +973,7 @@ const TokenListingDashboard = () => {
                   letterSpacing: '0.5px',
                   marginBottom: '6px'
                 }}>
-                  RATE
+                  AVG. EXCHANGE COVERAGE
                 </div>
                 <div style={{
                   display: 'flex',
@@ -887,8 +982,7 @@ const TokenListingDashboard = () => {
                   marginBottom: '8px'
                 }}>
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
-                    {displayedCoverageOverview?.coverageRate ? 
-                      `${displayedCoverageOverview.coverageRate}%` : 'No data'}
+                    {displayedCoverageOverview?.averageCoverage || 0}%
                   </span>
                 </div>
                 <div style={{
@@ -906,7 +1000,7 @@ const TokenListingDashboard = () => {
                         : 'linear-gradient(90deg, #10b981, #14d395)',
                       borderRadius: '6px',
                       transition: 'width 0.5s ease',
-                      width: `${displayedCoverageOverview?.coverageRate ?? 0}%`
+                      width: `${displayedCoverageOverview?.averageCoverage || 0}%`
                     }}
                   />
                 </div>
@@ -1386,9 +1480,9 @@ const TokenListingDashboard = () => {
                             whiteSpace: 'nowrap',
                             maxWidth: '160px'
                           }}
-                          title={`${token.name} (${token.symbol})`}
+                          title={`${token.name} (${token.symbol.toUpperCase()})`}
                         >
-                          {token.name} ({token.symbol})
+                          {token.name} ({token.symbol.toUpperCase()})
                         </span>
                         <a
                           href={getCoinGeckoUrl(token.symbol, token.name)}

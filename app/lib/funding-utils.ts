@@ -74,6 +74,16 @@ export const parseInvestors = (leadStr: string, othersStr: string): {
   };
 };
 
+// Check if a funding round is IPO-related and should be excluded
+export const isIpoRound = (round: string): boolean => {
+  if (!round || round.trim() === '') return false;
+  
+  const roundLower = round.toLowerCase().trim();
+  const ipoKeywords = ['ipo', 'post-ipo', 'pre-ipo'];
+  
+  return ipoKeywords.some(keyword => roundLower.includes(keyword));
+};
+
 // Process raw funding record
 export const processFundingRecord = (raw: RawFundingRecord): ProcessedFundingRecord => {
   // Note: Date and Amount Raised fields are swapped in the API
@@ -88,8 +98,8 @@ export const processFundingRecord = (raw: RawFundingRecord): ProcessedFundingRec
     date,
     dateDisplay: formatDate(date),
     round: raw.Round,
-    category: raw.Category,
-    classifiedCategory: raw.ClassifiedCategory,
+    category: raw.Category, // Use native Category field
+    classifiedCategory: raw.Category, // Keep for backward compatibility, but use native Category
     description: raw.Description,
     leadInvestors: investors.lead,
     otherInvestors: investors.others,
@@ -127,13 +137,15 @@ export const getCategoryColor = (category: string): string => {
 export const process90DayFundingCategories = (processedRecords: ProcessedFundingRecord[]): CategoryMetrics[] => {
   console.log('=== PROCESSING 90-DAY FUNDING CATEGORIES ===');
   
-  // Filter records to last 90 days
+  // Filter records to last 90 days and exclude IPO rounds
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
   
   const last90DaysRecords = processedRecords.filter(record => {
     const recordDate = new Date(record.date);
-    return recordDate >= ninetyDaysAgo;
+    const isWithinTimeRange = recordDate >= ninetyDaysAgo;
+    const isNotIpoRound = !isIpoRound(record.round);
+    return isWithinTimeRange && isNotIpoRound;
   });
   
   console.log('Total records:', processedRecords.length);
@@ -156,7 +168,7 @@ export const process90DayFundingCategories = (processedRecords: ProcessedFunding
   
   // Add 90-day funding data
   last90DaysRecords.forEach(record => {
-    const cat = record.classifiedCategory || 'Others';
+    const cat = record.category || 'Others'; // Use native category field
     const existing = categoryMap.get(cat) || { total: 0, count: 0 };
     existing.total += record.amount;
     existing.count += 1;
@@ -340,13 +352,16 @@ export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboar
   console.log('=== PROCESSING FUNDING DATA ===');
   console.log('Raw records count:', rawData.length);
   
-  // Process all records
-  const processedRecords = rawData.map(processFundingRecord);
+  // Process all records and filter out IPO-related rounds
+  const allProcessedRecords = rawData.map(processFundingRecord);
+  const processedRecords = allProcessedRecords.filter(record => !isIpoRound(record.round));
   
-  console.log('Processed records count:', processedRecords.length);
+  console.log('Total processed records (before IPO filter):', allProcessedRecords.length);
+  console.log('IPO records filtered out:', allProcessedRecords.length - processedRecords.length);
+  console.log('Venture funding records (after IPO filter):', processedRecords.length);
   if (processedRecords.length > 0) {
     console.log('Sample processed record:', processedRecords[0]);
-    console.log('Categories in data:', [...new Set(processedRecords.map(r => r.classifiedCategory))]);
+    console.log('Categories in data:', [...new Set(processedRecords.map(r => r.category))]);
   }
   
   // Filter last 30 days
@@ -398,7 +413,7 @@ export const processFundingData = (rawData: RawFundingRecord[]): FundingDashboar
   
   // Add actual funding data
   processedRecords.forEach(record => {
-    const cat = record.classifiedCategory || 'Others';
+    const cat = record.category || 'Others'; // Use native category field
     const existing = categoryMap.get(cat) || { total: 0, count: 0 };
     existing.total += record.amount;
     existing.count += 1;

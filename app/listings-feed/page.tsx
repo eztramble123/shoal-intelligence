@@ -9,6 +9,7 @@ import { ExternalLink } from 'lucide-react';
 import ErrorBoundary, { DashboardErrorFallback } from '@/components/error-boundary';
 import { ErrorState } from '@/components/error-states';
 import { withRetry, isNetworkError } from '@/lib/error-utils';
+import { formatListingDate } from '@/app/lib/listings-utils';
 
 const RecentListingsTrackerFeed = () => {
   const [selectedExchange, setSelectedExchange] = useState('All Exchanges');
@@ -208,31 +209,41 @@ const RecentListingsTrackerFeed = () => {
         
         return {
           symbol: token.ticker,
-          exchange: `on ${token.exchanges[0] ?? 'Unknown'}`,
+          exchange: `on ${token.exchanges.length > 0 ? token.exchanges[0] : (token.primaryExchange || 'Alpha/Pre-Market')}`,
           time: timeDisplay
         };
       });
     
-    // Live listings feed from period-specific data
+    // Recent listings feed from period-specific data
     const liveListings = periodListings
       .slice(0, 10)
       .map(token => {
-        const listingDate = token.listingDate instanceof Date ? token.listingDate : new Date(token.listingDate);
-        // Only format timestamp on client to avoid hydration mismatch
-        const timestamp = isClient ? listingDate.toLocaleTimeString('en-US', { 
-          hour12: false,
-          hour: '2-digit',
-          minute: '2-digit',
-          second: '2-digit'
-        }) : '--:--:--';
+        // Use scraped_at timestamp which is more reliable than listingDate
+        let dateDisplay: string;
+        
+        if (token.scrapedAt instanceof Date) {
+          const unixTimestamp = Math.floor(token.scrapedAt.getTime() / 1000);
+          dateDisplay = formatListingDate(unixTimestamp);
+        } else {
+          // Fallback to listingDate if scrapedAt is not available
+          let unixTimestamp: number;
+          if (typeof token.listingDate === 'number') {
+            unixTimestamp = token.listingDate;
+          } else if (token.listingDate instanceof Date) {
+            unixTimestamp = Math.floor(token.listingDate.getTime() / 1000);
+          } else {
+            unixTimestamp = Math.floor(new Date(token.listingDate).getTime() / 1000);
+          }
+          dateDisplay = formatListingDate(unixTimestamp);
+        }
         
         return {
-          timestamp,
-          exchange: token.exchanges[0] ?? 'Unknown',
+          timestamp: dateDisplay,
+          exchange: token.exchanges.length > 0 ? token.exchanges[0] : (token.primaryExchange || 'Alpha/Pre-Market'),
           asset: token.ticker,
-          name: token.name,
+          name: token.name || token.symbol || 'Unknown',
           type: 'SPOT' as const,
-          status: 'Live' as const,
+          status: 'Listed' as const,
           price: token.priceDisplay,
           coingeckoUrl: token.coingeckoUrl,
           sourceMessage: token.sourceMessage
@@ -1135,7 +1146,7 @@ const RecentListingsTrackerFeed = () => {
           }}>
             <div>
               <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
-                Live Listings Feed
+                Recent Listings Feed
               </h2>
               <div style={{
                 display: 'flex',
@@ -1315,34 +1326,6 @@ const RecentListingsTrackerFeed = () => {
                 <option>$10+</option>
               </select>
             </div>
-            
-            <div>
-              <label style={{
-                display: 'block',
-                fontSize: '12px',
-                color: '#9ca3af',
-                marginBottom: '6px',
-                textTransform: 'uppercase',
-                letterSpacing: '0.5px'
-              }}>
-                Status
-              </label>
-              <select style={{
-                width: '100%',
-                background: '#13141a',
-                border: '1px solid #2a2b35',
-                borderRadius: '8px',
-                padding: '8px 12px',
-                fontSize: '14px',
-                color: '#ffffff',
-                outline: 'none'
-              }}>
-                <option>All Status</option>
-                <option>Live</option>
-                <option>Pending</option>
-                <option>Failed</option>
-              </select>
-            </div>
           </div>
 
           {/* Table Header */}
@@ -1360,7 +1343,7 @@ const RecentListingsTrackerFeed = () => {
             letterSpacing: '0.5px',
             marginBottom: '8px'
           }}>
-            <div>Time</div>
+            <div>Date</div>
             <div>Exchange</div>
             <div>Asset</div>
             <div>Name</div>
@@ -1441,10 +1424,10 @@ const RecentListingsTrackerFeed = () => {
                 <div>
                   <span style={{
                     padding: '4px 8px',
-                    background: listing.status === 'Live' ? 'rgba(16, 185, 129, 0.2)' : 
+                    background: listing.status === 'Listed' ? 'rgba(16, 185, 129, 0.2)' : 
                                listing.status === 'Pending' ? 'rgba(59, 130, 246, 0.2)' :
                                'rgba(239, 68, 68, 0.2)',
-                    color: listing.status === 'Live' ? '#10b981' :
+                    color: listing.status === 'Listed' ? '#10b981' :
                            listing.status === 'Pending' ? '#3b82f6' : '#ef4444',
                     borderRadius: '4px',
                     fontSize: '12px',
