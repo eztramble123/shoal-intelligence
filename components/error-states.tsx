@@ -15,7 +15,7 @@ import {
 import { ErrorType, type ErrorResponse } from '@/lib/error-utils';
 
 interface ErrorStateProps {
-  error?: ErrorResponse | Error | string | null;
+  error?: ErrorResponse | Error | string | null; // TODO: Fake
   onRetry?: () => void;
   retryLabel?: string;
   className?: string;
