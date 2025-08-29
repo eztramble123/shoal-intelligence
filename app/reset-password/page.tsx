@@ -1,75 +1,102 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
-import { cn } from "@/lib/utils"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { signIn } from "next-auth/react"
-import Image from "next/image"
+import Image from 'next/image'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
 
-export function LoginForm({
-  className,
-  ...props
-}: React.ComponentProps<"div">) {
+function ResetPasswordForm() {
   const [formData, setFormData] = useState({
-    email: '',
     password: '',
+    confirmPassword: '',
   })
   const [loading, setLoading] = useState(false)
+  const [validating, setValidating] = useState(true)
   const [error, setError] = useState('')
-  const [message, setMessage] = useState('')
+  const [success, setSuccess] = useState('')
+  const [tokenValid, setTokenValid] = useState(false)
   const router = useRouter()
   const searchParams = useSearchParams()
+  const token = searchParams.get('token')
 
-  // Handle URL parameters for messages
+  // Validate token on component mount
   useEffect(() => {
-    const error = searchParams.get('error')
-    const verified = searchParams.get('verified')
-    const message = searchParams.get('message')
+    const validateToken = async () => {
+      if (!token) {
+        setError('Invalid reset link')
+        setValidating(false)
+        return
+      }
 
-    if (error) {
-      setError(decodeURIComponent(error))
-    }
-    if (verified === 'true' && message) {
-      setMessage(decodeURIComponent(message))
-    }
-    if (message && !verified) {
-      setMessage(decodeURIComponent(message))
-    }
-  }, [searchParams])
+      try {
+        const response = await fetch(`/api/auth/reset-password?token=${token}`)
+        const data = await response.json()
 
-  const handleGoogleSignIn = () => {
-    signIn('google', { callbackUrl: '/pricing' })
-  }
+        if (response.ok && data.valid) {
+          setTokenValid(true)
+        } else {
+          setError(data.error || 'Invalid or expired reset token')
+        }
+      } catch (error) {
+        setError('Failed to validate reset token')
+      } finally {
+        setValidating(false)
+      }
+    }
+
+    validateToken()
+  }, [token])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     setError('')
-    setMessage('')
+    setSuccess('')
 
-    if (!formData.email || !formData.password) {
-      setError('Email and password are required')
+    // Validate form
+    if (!formData.password || !formData.confirmPassword) {
+      setError('Both password fields are required')
+      setLoading(false)
+      return
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setError('Passwords do not match')
+      setLoading(false)
+      return
+    }
+
+    if (formData.password.length < 8) {
+      setError('Password must be at least 8 characters long')
       setLoading(false)
       return
     }
 
     try {
-      const result = await signIn('credentials', {
-        email: formData.email,
-        password: formData.password,
-        redirect: false,
+      const response = await fetch('/api/auth/reset-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          token,
+          password: formData.password,
+        }),
       })
 
-      if (result?.error) {
-        setError(result.error)
-      } else if (result?.ok) {
-        router.push('/pricing')
+      const data = await response.json()
+
+      if (response.ok) {
+        setSuccess('Password reset successful! Redirecting to login...')
+        // Redirect to login after 3 seconds
+        setTimeout(() => {
+          router.push('/login?message=Password reset successful. You can now sign in with your new password.')
+        }, 3000)
+      } else {
+        setError(data.error || 'Password reset failed')
       }
     } catch (error) {
-      setError('An error occurred during sign in')
+      setError('Network error. Please try again.')
     } finally {
       setLoading(false)
     }
@@ -82,10 +109,48 @@ export function LoginForm({
     })
   }
 
+  if (validating) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#14151C',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#ffffff'
+      }}>
+        <div>Validating reset token...</div>
+      </div>
+    )
+  }
+
+  if (!tokenValid) {
+    return (
+      <div style={{
+        minHeight: '100vh',
+        background: '#14151C',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        color: '#ffffff',
+        textAlign: 'center'
+      }}>
+        <div>
+          <h1 style={{ fontSize: '24px', marginBottom: '16px' }}>Invalid Reset Link</h1>
+          <p style={{ color: '#9ca3af', marginBottom: '24px' }}>{error}</p>
+          <Link href="/forgot-password" style={{
+            color: '#667eea',
+            textDecoration: 'underline'
+          }}>
+            Request a new reset link
+          </Link>
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div 
-      className={cn("", className)} 
-      {...props}
+    <div
       style={{
         minHeight: '100vh',
         background: '#14151C',
@@ -93,9 +158,8 @@ export function LoginForm({
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, sans-serif'
       }}
     >
-      {/* Left Panel - Login Form */}
-      <div 
-        className="lg:flex-1"
+      {/* Left Panel - Reset Password Form */}
+      <div
         style={{
           width: '100%',
           display: 'flex',
@@ -105,7 +169,8 @@ export function LoginForm({
           minWidth: '0',
           minHeight: '100vh',
           position: 'relative'
-        }}>
+        }}
+      >
         {/* Purple hue background filling entire left panel */}
         <div style={{
           position: 'absolute',
@@ -147,33 +212,21 @@ export function LoginForm({
             marginBottom: '32px',
             textAlign: 'left'
           }}>
-            <div style={{
-              position: 'relative',
-              marginBottom: '8px'
+            <h1 style={{
+              fontSize: '28px',
+              fontWeight: '700',
+              color: '#ffffff',
+              marginBottom: '8px',
+              lineHeight: '1.2'
             }}>
-              <h1 style={{
-                fontSize: '28px',
-                fontWeight: '700',
-                color: '#ffffff',
-                lineHeight: '1.2',
-                position: 'relative',
-                zIndex: 1
-              }}>
-                Sign in
-              </h1>
-            </div>
+              Reset Password
+            </h1>
             <p style={{
               fontSize: '14px',
               color: '#9ca3af',
               marginBottom: '0'
             }}>
-              New user?{' '}
-              <Link href="/register" style={{
-                color: '#667eea',
-                textDecoration: 'underline'
-              }}>
-                Sign up for free
-              </Link>
+              Enter your new password below
             </p>
           </div>
 
@@ -191,7 +244,7 @@ export function LoginForm({
             </div>
           )}
 
-          {message && (
+          {success && (
             <div style={{
               background: '#f0fdf4',
               border: '1px solid #dcfce7',
@@ -201,84 +254,53 @@ export function LoginForm({
               marginBottom: '16px',
               fontSize: '14px'
             }}>
-              {message}
+              {success}
             </div>
           )}
 
           <form onSubmit={handleSubmit} style={{ width: '100%' }}>
-            <div style={{ marginBottom: '24px' }}>
-              <div style={{ marginBottom: '16px' }}>
-                <Input
-                  type="email"
-                  name="email"
-                  placeholder="Email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  disabled={loading}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: '#2a2d3a',
-                    border: '1px solid #3a3d4a',
-                    borderRadius: '8px',
-                    color: '#ffffff',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-              <div style={{ marginBottom: '8px' }}>
-                <Input
-                  type="password"
-                  name="password"
-                  placeholder="Password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  disabled={loading}
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '12px 16px',
-                    background: '#2a2d3a',
-                    border: '1px solid #3a3d4a',
-                    borderRadius: '8px',
-                    color: '#ffffff',
-                    fontSize: '14px',
-                    outline: 'none'
-                  }}
-                />
-              </div>
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                marginBottom: '24px'
-              }}>
-                <div style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}>
-                  <input type="checkbox" id="stay-signed-in" style={{
-                    accentColor: '#10b981'
-                  }} />
-                  <label htmlFor="stay-signed-in" style={{
-                    fontSize: '14px',
-                    color: '#9ca3af',
-                    cursor: 'pointer'
-                  }}>
-                    Stay signed in
-                  </label>
-                </div>
-                <Link href="/forgot-password" style={{
+            <div style={{ marginBottom: '16px' }}>
+              <Input
+                type="password"
+                name="password"
+                placeholder="New Password (min 8 characters)"
+                value={formData.password}
+                onChange={handleChange}
+                disabled={loading}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: '#2a2d3a',
+                  border: '1px solid #3a3d4a',
+                  borderRadius: '8px',
+                  color: '#ffffff',
                   fontSize: '14px',
-                  color: '#9ca3af',
-                  textDecoration: 'none'
-                }}>
-                  Forgot your password?
-                </Link>
-              </div>
+                  outline: 'none'
+                }}
+              />
+            </div>
+
+            <div style={{ marginBottom: '24px' }}>
+              <Input
+                type="password"
+                name="confirmPassword"
+                placeholder="Confirm New Password"
+                value={formData.confirmPassword}
+                onChange={handleChange}
+                disabled={loading}
+                required
+                style={{
+                  width: '100%',
+                  padding: '12px 16px',
+                  background: '#2a2d3a',
+                  border: '1px solid #3a3d4a',
+                  borderRadius: '8px',
+                  color: '#ffffff',
+                  fontSize: '14px',
+                  outline: 'none'
+                }}
+              />
             </div>
 
             <Button
@@ -304,66 +326,25 @@ export function LoginForm({
                 if (!loading) e.currentTarget.style.background = '#667eea'
               }}
             >
-              {loading ? 'Signing in...' : 'Sign in'}
+              {loading ? 'Resetting Password...' : 'Reset Password'}
             </Button>
 
             <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '16px',
-              marginBottom: '24px'
+              textAlign: 'center'
             }}>
-              <div style={{
-                flex: 1,
-                height: '1px',
-                background: '#3a3d4a'
-              }}></div>
-              <span style={{
+              <Link href="/login" style={{
                 fontSize: '14px',
-                color: '#9ca3af'
+                color: '#667eea',
+                textDecoration: 'underline'
               }}>
-                or
-              </span>
-              <div style={{
-                flex: 1,
-                height: '1px',
-                background: '#3a3d4a'
-              }}></div>
+                Back to Sign In
+              </Link>
             </div>
-
-            <Button
-              type="button"
-              onClick={handleGoogleSignIn}
-              style={{
-                width: '100%',
-                padding: '12px',
-                background: '#2a2d3a',
-                border: '1px solid #3a3d4a',
-                borderRadius: '8px',
-                color: '#ffffff',
-                fontSize: '14px',
-                fontWeight: '400',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: '8px',
-                transition: 'background 0.3s ease'
-              }}
-            >
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="16" height="16">
-                <path
-                  d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z"
-                  fill="currentColor"
-                />
-              </svg>
-              Sign in with google
-            </Button>
           </form>
         </div>
       </div>
 
-      {/* Right Panel - Code Shell Visual */}
+      {/* Right Panel - Same as login */}
       <div 
         className="hidden lg:flex"
         style={{
@@ -452,5 +433,13 @@ export function LoginForm({
         </div>
       </div>
     </div>
+  )
+}
+
+export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <ResetPasswordForm />
+    </Suspense>
   )
 }

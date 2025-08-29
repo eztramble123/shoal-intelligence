@@ -6,6 +6,9 @@ import { useSession } from 'next-auth/react';
 import { SharedLayout } from '@/components/shared-layout';
 import { Skeleton } from '@/components/skeleton';
 import { SpinningShoalLogo } from '@/components/spinning-shoal-logo';
+import ErrorBoundary, { DashboardErrorFallback } from '@/components/error-boundary';
+import { ErrorState } from '@/components/error-states';
+import { withRetry, isNetworkError } from '@/lib/error-utils';
 import { ParityDashboardData } from '@/app/types/parity';
 import { FundingDashboardData } from '@/app/types/funding';
 import { ListingsDashboardData } from '@/app/types/listings';
@@ -31,21 +34,41 @@ export default function Dashboard() {
   const [fundingError, setFundingError] = useState<string | null>(null);
   const [listingsError, setListingsError] = useState<string | null>(null);
 
-  // Data fetching functions
+  // Enhanced data fetching functions with better error handling and retry logic
   const fetchParityData = async () => {
     try {
       setParityLoading(true);
-      const response = await fetch('/api/parity');
-      if (!response.ok) {
-        throw new Error('Failed to fetch parity data');
-      }
-      const data = await response.json();
+      setParityError(null);
+      
+      const data = await withRetry(async () => {
+        const response = await fetch('/api/parity', {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}: Failed to fetch parity data`);
+        }
+        
+        return response.json();
+      }, 3, 1000);
+      
       setParityData(data);
       setBaseExchange(data.baseExchange || 'binance');
-      setParityError(null);
     } catch (error) {
       console.error('Parity data error:', error);
-      setParityError(error instanceof Error ? error.message : 'Failed to fetch parity data');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch parity data';
+      
+      // Check if it's a network error
+      if (isNetworkError(error)) {
+        setParityError('Network connection failed. Please check your internet connection and try again.');
+      } else if (error instanceof Error && error.message.includes('timeout')) {
+        setParityError('Request timed out. The service might be experiencing high load.');
+      } else {
+        setParityError(errorMessage);
+      }
     } finally {
       setParityLoading(false);
     }
@@ -54,16 +77,35 @@ export default function Dashboard() {
   const fetchFundingData = async () => {
     try {
       setFundingLoading(true);
-      const response = await fetch('/api/funding');
-      if (!response.ok) {
-        throw new Error('Failed to fetch funding data');
-      }
-      const data = await response.json();
-      setFundingData(data);
       setFundingError(null);
+      
+      const data = await withRetry(async () => {
+        const response = await fetch('/api/funding', {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}: Failed to fetch funding data`);
+        }
+        
+        return response.json();
+      }, 3, 1000);
+      
+      setFundingData(data);
     } catch (error) {
       console.error('Funding data error:', error);
-      setFundingError(error instanceof Error ? error.message : 'Failed to fetch funding data');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch funding data';
+      
+      if (isNetworkError(error)) {
+        setFundingError('Network connection failed. Please check your internet connection and try again.');
+      } else if (error instanceof Error && error.message.includes('timeout')) {
+        setFundingError('Request timed out. The service might be experiencing high load.');
+      } else {
+        setFundingError(errorMessage);
+      }
     } finally {
       setFundingLoading(false);
     }
@@ -72,16 +114,35 @@ export default function Dashboard() {
   const fetchListingsData = async () => {
     try {
       setListingsLoading(true);
-      const response = await fetch('/api/listings?period=30d&trends=true');
-      if (!response.ok) {
-        throw new Error('Failed to fetch listings data');
-      }
-      const data = await response.json();
-      setListingsData(data);
       setListingsError(null);
+      
+      const data = await withRetry(async () => {
+        const response = await fetch('/api/listings?period=30d&trends=true', {
+          headers: {
+            'Cache-Control': 'no-cache'
+          }
+        });
+        
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          throw new Error(errorData.message || `HTTP ${response.status}: Failed to fetch listings data`);
+        }
+        
+        return response.json();
+      }, 3, 1000);
+      
+      setListingsData(data);
     } catch (error) {
       console.error('Listings data error:', error);
-      setListingsError(error instanceof Error ? error.message : 'Failed to fetch listings data');
+      const errorMessage = error instanceof Error ? error.message : 'Failed to fetch listings data';
+      
+      if (isNetworkError(error)) {
+        setListingsError('Network connection failed. Please check your internet connection and try again.');
+      } else if (error instanceof Error && error.message.includes('timeout')) {
+        setListingsError('Request timed out. The service might be experiencing high load.');
+      } else {
+        setListingsError(errorMessage);
+      }
     } finally {
       setListingsLoading(false);
     }
@@ -268,7 +329,8 @@ export default function Dashboard() {
           marginBottom: '30px'
         }}>
           {/* Listings Parity Analysis */}
-          <div>
+          <ErrorBoundary fallback={DashboardErrorFallback}>
+            <div>
             <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#ffffff' }}>
               Listings Parity Analysis
             </h2>
@@ -293,20 +355,31 @@ export default function Dashboard() {
               e.currentTarget.style.borderColor = '#212228';
             }}
             >
-              <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)} listing opportunities vs other exchanges
-              </div>
-              
-              <div style={{ marginTop: '20px', marginBottom: '30px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
-                  <div style={{ fontSize: '14px', color: '#ffffff' }}>Average Market Coverage</div>
-                  <div style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-{parityLoading ? '...' : parityError ? 'Error' : `${Math.round(parityData?.coverageOverview?.averageCoverage || 0)}%`}
+              {parityError ? (
+                <ErrorState
+                  error={parityError}
+                  onRetry={fetchParityData}
+                  variant="compact"
+                />
+              ) : (
+                <>
+                  <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
+                    {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)} listing opportunities vs other exchanges
+                  </div>
+                  
+                  <div style={{ marginTop: '20px', marginBottom: '30px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
+                      <div style={{ fontSize: '14px', color: '#ffffff' }}>Average Market Coverage</div>
+                      <div style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
+                        {parityLoading ? '...' : parityData?.coverageOverview?.averageCoverage ? 
+                          `${Math.round(Number(parityData.coverageOverview.averageCoverage))}%` : 
+                          'No data'}
                   </div>
                 </div>
                 <div style={{ flex: 1, background: '#1a1b23', borderRadius: '8px', height: '8px', position: 'relative' }}>
                   <div style={{ 
-                    width: `${parityLoading ? 0 : Math.round(parityData?.coverageOverview?.averageCoverage || 0)}%`, 
+                    width: `${parityLoading ? 0 : parityData?.coverageOverview?.averageCoverage ? 
+                      Math.round(Number(parityData.coverageOverview.averageCoverage)) : 0}%`, 
                     background: '#10b981', 
                     height: '100%', 
                     borderRadius: '8px',
@@ -338,7 +411,8 @@ export default function Dashboard() {
                 >
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Opportunities for {baseExchange.charAt(0).toUpperCase() + baseExchange.slice(1)}</span>
                   <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-{parityLoading ? '...' : parityError ? '—' : (parityData?.coverageOverview?.tokensMissing || 0)}
+{parityLoading ? '...' : parityError ? 'Error' : 
+                      parityData?.coverageOverview?.tokensMissing ?? 'No data'}
                   </span>
                 </div>
                 <div style={{
@@ -362,7 +436,8 @@ export default function Dashboard() {
                 >
                   <span style={{ fontSize: '14px', color: '#ffffff' }}>Exclusive Listings</span>
                   <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>
-{parityLoading ? '...' : parityError ? '—' : (parityData?.coverageOverview?.exclusiveListings || 0)}
+{parityLoading ? '...' : parityError ? 'Error' : 
+                      parityData?.coverageOverview?.exclusiveListings ?? 'No data'}
                   </span>
                 </div>
               </div>
@@ -451,13 +526,17 @@ export default function Dashboard() {
               onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(5px)'}
               onMouseLeave={(e) => e.currentTarget.style.transform = 'translateX(0)'}
               >
-                View Full Matrix →
-              </span>
+                    View Full Matrix →
+                  </span>
+                </>
+              )}
             </div>
           </div>
+          </ErrorBoundary>
 
           {/* Venture Intelligence */}
-          <div>
+          <ErrorBoundary fallback={DashboardErrorFallback}>
+            <div>
             <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#ffffff' }}>
               Venture Intelligence
             </h2>
@@ -482,7 +561,13 @@ export default function Dashboard() {
               e.currentTarget.style.borderColor = '#212228';
             }}
             >
-              {fundingLoading ? (
+              {fundingError ? (
+                <ErrorState
+                  error={fundingError}
+                  onRetry={fetchFundingData}
+                  variant="compact"
+                />
+              ) : fundingLoading ? (
                 <>
                   <Skeleton height="14px" width="180px" style={{ marginBottom: '20px' }} />
                   
@@ -510,17 +595,18 @@ export default function Dashboard() {
                     {[
                       { 
                         label: 'Total Raised (30d)', 
-                        value: fundingError ? 'Error' : (fundingData?.last30Days?.totalRaised || '$0'), 
+                        value: fundingError ? 'Error' : (fundingData?.last30Days?.totalRaised ?? 'No data'), 
                         isGreen: true 
                       },
                       { 
                         label: 'Deals Closed (30d)', 
-                        value: fundingError ? '—' : (fundingData?.last30Days?.dealCount || 0).toString(), 
+                        value: fundingError ? 'Error' : 
+                          fundingData?.last30Days?.dealCount?.toString() ?? 'No data', 
                         isGreen: false 
                       },
                       { 
                         label: 'Avg Round (30d)', 
-                        value: fundingError ? 'Error' : (fundingData?.last30Days?.avgRoundSize || '$0'), 
+                        value: fundingError ? 'Error' : (fundingData?.last30Days?.avgRoundSize ?? 'No data'), 
                         isGreen: false 
                       }
                     ].map((stat, index) => (
@@ -570,9 +656,11 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+          </ErrorBoundary>
 
           {/* Recent Listings */}
-          <div>
+          <ErrorBoundary fallback={DashboardErrorFallback}>
+            <div>
             <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '15px', color: '#ffffff' }}>
               Recent Listings
             </h2>
@@ -597,11 +685,19 @@ export default function Dashboard() {
               e.currentTarget.style.borderColor = '#212228';
             }}
             >
-              <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
-                Live listing activity feed
-              </div>
-              <div style={{ marginTop: '20px' }}>
-                {listingsLoading ? (
+              {listingsError ? (
+                <ErrorState
+                  error={listingsError}
+                  onRetry={fetchListingsData}
+                  variant="compact"
+                />
+              ) : (
+                <>
+                  <div style={{ fontSize: '14px', color: '#9ca3af', marginBottom: '20px' }}>
+                    Live listing activity feed
+                  </div>
+                  <div style={{ marginTop: '20px' }}>
+                    {listingsLoading ? (
                   Array.from({ length: 2 }).map((_, index) => (
                     <div key={index} style={{
                       display: 'flex',
@@ -618,12 +714,13 @@ export default function Dashboard() {
                   [
                     { 
                       label: 'New Listings (30D)', 
-                      value: listingsError ? '—' : (listingsData?.last30Days?.totalNewListings || 0).toString(), 
+                      value: listingsError ? 'Error' : 
+                        (listingsData?.last30Days?.totalNewListings?.toString() ?? 'No data'), 
                       isGreen: true 
                     },
                     { 
                       label: 'Top Recent Listed', 
-                      value: listingsError ? '—' : (listingsData?.fastestGrowing?.[0]?.symbol || 'N/A'), 
+                      value: listingsError ? 'Error' : (listingsData?.fastestGrowing?.[0]?.symbol ?? 'No data'), 
                       isGreen: false,
                       timeframe: listingsData?.fastestGrowing?.[0]?.timeframe
                     }
@@ -688,8 +785,9 @@ export default function Dashboard() {
                   <div style={{ padding: '12px 0' }}>
                     <span style={{ fontSize: '14px', color: '#ef4444' }}>Unable to load listing data</span>
                   </div>
-                ) : (
-                  (listingsData?.fastestGrowing?.slice(0, 3) || []).map((listing, index) => (
+                ) : (listingsData?.fastestGrowing && listingsData.fastestGrowing.length > 0) ? (
+                  <>
+                    {listingsData.fastestGrowing.slice(0, 3).map((listing, index) => (
                   <div key={index} style={{
                     display: 'flex',
                     justifyContent: 'space-between',
@@ -715,11 +813,12 @@ export default function Dashboard() {
                     </span>
                     <span style={{ fontSize: '14px', fontWeight: '600', color: '#ffffff' }}>{listing.exchanges}</span>
                   </div>
-                  )) || (
+                  ))}
+                  </>
+                ) : (
                     <div style={{ padding: '12px 0' }}>
                       <span style={{ fontSize: '14px', color: '#9ca3af' }}>No listing data available</span>
                     </div>
-                  )
                 )}
               </div>
               <span style={{
@@ -733,10 +832,13 @@ export default function Dashboard() {
               onMouseEnter={(e) => e.currentTarget.style.transform = 'translateX(5px)'}
               onMouseLeave={(e) => e.currentTarget.style.transform = 'translateX(0)'}
               >
-                View Live Feed →
-              </span>
+                    View Live Feed →
+                  </span>
+                </>
+              )}
             </div>
           </div>
+          </ErrorBoundary>
         </div>
       </div>
     </SharedLayout>
