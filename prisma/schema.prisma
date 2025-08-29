@@ -1,16 +1,13 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 // NextAuth.js required models
@@ -50,6 +47,7 @@ model User {
   email         String    @unique
   emailVerified DateTime?
   image         String?
+  password      String?   // For email/password authentication
   
   // Stripe integration fields
   stripeCustomerId       String? @unique
@@ -58,16 +56,30 @@ model User {
   stripeCurrentPeriodEnd DateTime?
   
   // Plan selection
-  planType               String? // "free" or "pro"
+  planType               String?   @default("pending")
   planSelectedAt         DateTime?
   
   // User preferences
-  baseExchange           String? @default("binance")
-  preferences            Json?   // For future extensibility
+  baseExchange           String?   @default("binance")
+  preferences            Json?     // For future extensibility
+  
+  // Legacy whitelist fields (kept for data preservation)
+  companyName            String?
+  companySize            String?
+  useCase                String?
+  hasUsedTrial           Boolean   @default(false)
+  inviteEmailSent        Boolean   @default(false)
+  inviteEmailSentAt      DateTime?
+  isWhitelisted          Boolean   @default(false)
+  trialStartDate         DateTime?
+  trialEndDate           DateTime?
+  whitelistApprovedAt    DateTime?
+  whitelistApprovedBy    String?
 
-  accounts      Account[]
-  sessions      Session[]
-  subscriptions Subscription[]
+  accounts            Account[]
+  sessions            Session[]
+  subscriptions       Subscription[]
+  passwordResetTokens PasswordResetToken[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -84,16 +96,32 @@ model VerificationToken {
   @@map("verificationtokens")
 }
 
+// Password reset token model
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expires   DateTime
+  used      Boolean  @default(false)
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  createdAt DateTime @default(now())
+  
+  @@index([userId])
+  @@map("password_reset_tokens")
+}
+
 // Subscription management
 model Subscription {
-  id                    String   @id @default(cuid())
-  userId                String
-  stripeSubscriptionId  String   @unique
-  stripeCustomerId      String
-  stripePriceId         String
+  id                       String   @id @default(cuid())
+  userId                   String
+  stripeSubscriptionId     String   @unique
+  stripeCustomerId         String
+  stripePriceId            String
   stripeCurrentPeriodStart DateTime
   stripeCurrentPeriodEnd   DateTime
-  status                String // active, canceled, incomplete, incomplete_expired, past_due, trialing, unpaid
+  status                   String   // active, canceled, incomplete, incomplete_expired, past_due, trialing, unpaid
   
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -112,12 +140,12 @@ model FundingSnapshot {
   dealCount   Int
   percentage  Float    // Percentage of total funding for that day
   
+  createdAt DateTime @default(now())
+  
   // Composite index for efficient querying
   @@unique([date, sector])
   @@index([sector, date])
   @@map("funding_snapshots")
-  
-  createdAt DateTime @default(now())
 }
 
 model FundingTrend {
@@ -147,12 +175,12 @@ model ListingSnapshot {
   volume24h     Float?
   scrapedAt     DateTime
   
+  createdAt DateTime @default(now())
+  
   // Composite index for efficient querying
   @@unique([date, ticker])
   @@index([ticker, date])
   @@map("listing_snapshots")
-  
-  createdAt DateTime @default(now())
 }
 
 model ListingTrend {
@@ -166,4 +194,38 @@ model ListingTrend {
   lastUpdated       DateTime @default(now())
   
   @@map("listing_trends")
+}
+
+// Legacy tables (kept for data preservation)
+model EnterpriseInquiry {
+  id          String   @id @default(cuid())
+  email       String
+  name        String
+  company     String
+  companySize String
+  useCase     String
+  phoneNumber String?
+  message     String?
+  status      String   @default("new")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  @@map("enterprise_inquiries")
+}
+
+model WhitelistApplication {
+  id              String   @id @default(cuid())
+  email           String   @unique
+  name            String
+  company         String?
+  role            String?
+  useCase         String?
+  status          String   @default("pending")
+  approvedBy      String?
+  rejectedBy      String?
+  rejectionReason String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+  
+  @@map("whitelist_applications")
 }

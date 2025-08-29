@@ -120,7 +120,7 @@ const CustomTreemapContent = (props: TreemapContentProps) => {
           >
             {(() => {
               // Try to get deal count from various possible sources
-              const dealCount = props?.deals || payload?.deals || payload?.dealCount || rest?.deals || 0;
+              const dealCount = props?.deals ?? payload?.deals ?? payload?.dealCount ?? rest?.deals ?? 0;
               return `${dealCount} deals`;
             })()}
           </text>
@@ -160,7 +160,7 @@ const CustomTreemapContent = (props: TreemapContentProps) => {
 const formatInvestorDisplay = (leadInvestors: string[], otherInvestors: string[]): string => {
   const allInvestors = [...leadInvestors, ...otherInvestors];
   
-  if (allInvestors.length === 0) return 'N/A';
+  if (allInvestors.length === 0) return 'No data';
   if (allInvestors.length === 1) return allInvestors[0];
   if (allInvestors.length === 2) return `${allInvestors[0]}, ${allInvestors[1]}`;
   if (allInvestors.length === 3) return `${allInvestors[0]}, ${allInvestors[1]}, ${allInvestors[2]}`;
@@ -212,7 +212,7 @@ const VentureIntelligenceDashboard = () => {
     console.log('=== DEBUGGING FUNDING DATA ===');
     console.log('fundingData exists:', !!fundingData);
     console.log('fundingData.latestRounds exists:', !!fundingData.latestRounds);
-    console.log('fundingData.latestRounds length:', fundingData.latestRounds?.length || 0);
+    console.log('fundingData.latestRounds length:', fundingData.latestRounds?.length ?? 0);
     
     if (fundingData.latestRounds && fundingData.latestRounds.length > 0) {
       console.log('First 3 rounds:', fundingData.latestRounds.slice(0, 3).map(r => ({
@@ -264,15 +264,15 @@ const VentureIntelligenceDashboard = () => {
     fundingData.latestRounds.map(round => ({
       time: round.dateDisplay,
       company: round.name,
-      round: round.round || 'Unknown',
+      round: round.round ?? 'Unknown',
       amount: round.amountDisplay,
       leadInvestor: formatInvestorDisplay(round.leadInvestors, round.otherInvestors),
-      valuation: round.valuation || 'N/A',
+      valuation: round.valuation ?? 'No data',
       change: '+0.0%', // TODO: Calculate from historical data
       changeType: 'up' as const
     })) :
     [
-      { time: 'Loading...', company: 'Loading...', round: 'Loading...', amount: '$0', leadInvestor: 'Loading...', valuation: 'N/A', change: '+0.0%', changeType: 'up' },
+      { time: 'Loading...', company: 'Loading...', round: 'Loading...', amount: 'Loading...', leadInvestor: 'Loading...', valuation: 'Loading...', change: 'Loading...', changeType: 'up' },
     ];
 
   // Get unique values for dropdowns
@@ -292,12 +292,13 @@ const VentureIntelligenceDashboard = () => {
         const hasM = amount.includes('m');
         const hasK = amount.includes('k');
         const numValue = parseFloat(amount.replace(/[^0-9.]/g, ''));
+        const safeNumValue = isNaN(numValue) ? 0 : numValue;
         
         let amountNum = 0;
-        if (hasB) amountNum = numValue * 1000; // Convert billions to millions
-        else if (hasM) amountNum = numValue;
-        else if (hasK) amountNum = numValue / 1000; // Convert thousands to millions
-        else amountNum = numValue / 1000000; // Assume dollars, convert to millions
+        if (hasB) amountNum = safeNumValue * 1000; // Convert billions to millions
+        else if (hasM) amountNum = safeNumValue;
+        else if (hasK) amountNum = safeNumValue / 1000; // Convert thousands to millions
+        else amountNum = safeNumValue / 1000000; // Assume dollars, convert to millions
         
         switch (selectedAmount) {
           case '$0-1M': return amountNum <= 1;
@@ -886,7 +887,8 @@ const VentureIntelligenceDashboard = () => {
                   if (value >= 1000) {
                     labels.push(`$${(value / 1000).toFixed(1)}B`);
                   } else if (value >= 1) {
-                    labels.push(`$${Math.round(value)}M`);
+                    const roundedValue = Math.round(Number(value));
+                    labels.push(`$${isNaN(roundedValue) ? 0 : roundedValue}M`);
                   } else {
                     labels.push('$0');
                   }
@@ -977,7 +979,7 @@ const VentureIntelligenceDashboard = () => {
             </div>
             <div style={{ textAlign: 'center' }}>
               <div style={{ color: '#ffffff', fontWeight: '600', fontSize: '18px' }}>
-                {fundingData?.activeDeals || 0}
+                {fundingData?.activeDeals ?? 'No data'}
               </div>
               <div style={{ fontSize: '12px' }}>Active Total</div>
             </div>

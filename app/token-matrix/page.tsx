@@ -3,7 +3,7 @@
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSession } from 'next-auth/react';
-import { Check, X, Minus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ExternalLink } from 'lucide-react';
+import { Check, X, Minus, ChevronLeft, ChevronRight, ChevronUp, ChevronDown, ExternalLink, Eye, EyeOff } from 'lucide-react';
 import { SharedLayout } from '@/components/shared-layout';
 import { ParityDashboardData, ProcessedParityRecord } from '@/app/types/parity';
 import { filterTokensByComparison } from '@/app/lib/parity-utils';
@@ -34,6 +34,9 @@ const TokenListingDashboard = () => {
   const [debouncedPrimarySearch, setDebouncedPrimarySearch] = useState('');
   const [debouncedCompareSearch, setDebouncedCompareSearch] = useState('');
   
+  // Hidden tokens state
+  const [hiddenTokens, setHiddenTokens] = useState<Set<string>>(new Set());
+  
   const exchanges = [
     'Binance', 'Coinbase', 'Kraken', 'OKX', 'Bybit', 'KuCoin', 'Huobi', 'Gate.io', 'MEXC'
   ];
@@ -46,6 +49,28 @@ const TokenListingDashboard = () => {
       router.push('/login');
     }
   }, [session, status, router]);
+
+  // Load hidden tokens from localStorage
+  useEffect(() => {
+    try {
+      const savedHiddenTokens = localStorage.getItem('hiddenTokens');
+      if (savedHiddenTokens) {
+        const parsedTokens = JSON.parse(savedHiddenTokens);
+        setHiddenTokens(new Set(parsedTokens));
+      }
+    } catch (error) {
+      console.error('Error loading hidden tokens from localStorage:', error);
+    }
+  }, []);
+
+  // Save hidden tokens to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem('hiddenTokens', JSON.stringify(Array.from(hiddenTokens)));
+    } catch (error) {
+      console.error('Error saving hidden tokens to localStorage:', error);
+    }
+  }, [hiddenTokens]);
 
   // Debouncing effect for search terms
   useEffect(() => {
@@ -119,8 +144,8 @@ const TokenListingDashboard = () => {
           bVal = parseMarketCapValue(b.volume24hDisplay);
           break;
         case 'coverage':
-          aVal = a.coveragePercentage || 0;
-          bVal = b.coveragePercentage || 0;
+          aVal = a.coveragePercentage ?? 0;
+          bVal = b.coveragePercentage ?? 0;
           break;
         default:
           return 0;
@@ -146,7 +171,7 @@ const TokenListingDashboard = () => {
     if (cleanValue.includes('m')) return numericValue * 1e6;
     if (cleanValue.includes('k')) return numericValue * 1e3;
     
-    return numericValue || 0;
+    return isNaN(numericValue) ? 0 : numericValue;
   };
   
   // Handle column sorting
@@ -164,9 +189,14 @@ const TokenListingDashboard = () => {
     return parityData ? filterTokensByComparison(parityData.tokens, primaryExchange, compareExchanges, searchQuery) : [];
   }, [parityData, primaryExchange, compareExchanges, searchQuery]);
 
+  // Filter out hidden tokens
+  const visibleTokens = useMemo(() => {
+    return baseFilteredTokens.filter(token => !hiddenTokens.has(token.id));
+  }, [baseFilteredTokens, hiddenTokens]);
+
   const filteredTokens = useMemo(() => {
-    return sortTokens(baseFilteredTokens, sortColumn, sortDirection);
-  }, [baseFilteredTokens, sortColumn, sortDirection, sortTokens]);
+    return sortTokens(visibleTokens, sortColumn, sortDirection);
+  }, [visibleTokens, sortColumn, sortDirection, sortTokens]);
   
   // Helper function to check if token is on base exchange
   const isTokenOnBaseExchange = (token: ProcessedParityRecord, baseExchange: string): boolean => {
@@ -212,7 +242,7 @@ const TokenListingDashboard = () => {
       
       // COVERAGE: Average coverage for ALL tokens (market average)
       const totalCoverage = allTokens.reduce((sum, token) => sum + token.coveragePercentage, 0);
-      const averageCoverage = allTokens.length > 0 ? Math.round(totalCoverage / allTokens.length) : 0;
+      const averageCoverage = allTokens.length > 0 ? Math.round(Number(totalCoverage) / allTokens.length) : 0;
       
       return {
         tokensMissing: tokensNotOnBase.length,
@@ -231,7 +261,7 @@ const TokenListingDashboard = () => {
 
     const totalFiltered = filteredTokens.length;
     const totalCoverage = filteredTokens.reduce((sum, token) => sum + token.coveragePercentage, 0);
-    const averageCoverage = totalFiltered > 0 ? Math.round(totalCoverage / totalFiltered) : 0;
+    const averageCoverage = totalFiltered > 0 ? Math.round(Number(totalCoverage) / totalFiltered) : 0;
     const exclusiveListings = filteredTokens.filter(t => t.coverageCount <= 2).length;
     const coverageRate = averageCoverage;
 
@@ -307,6 +337,23 @@ const TokenListingDashboard = () => {
       }
     }
   }, [compareExchanges, primaryExchange]);
+  
+  // Hidden tokens handlers
+  const handleHideToken = useCallback((tokenId: string) => {
+    setHiddenTokens(prev => new Set([...prev, tokenId]));
+  }, []);
+  
+  const handleUnhideToken = useCallback((tokenId: string) => {
+    setHiddenTokens(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(tokenId);
+      return newSet;
+    });
+  }, []);
+  
+  const handleShowAllHidden = useCallback(() => {
+    setHiddenTokens(new Set());
+  }, []);
   
 
   const handleRowsPerPageChange = (newRowsPerPage: number) => {
@@ -720,6 +767,7 @@ const TokenListingDashboard = () => {
                   setCompareDropdownOpen(false);
                   setPrimarySearchTerm('');
                   setCompareSearchTerm('');
+                  setHiddenTokens(new Set());
                 }}
                 className={styles.resetButton}
               >
@@ -800,7 +848,7 @@ const TokenListingDashboard = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
-                    {displayedCoverageOverview?.tokensMissing || 0}
+                    {displayedCoverageOverview?.tokensMissing ?? 'No data'}
                   </span>
                 </div>
                 <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
@@ -834,7 +882,8 @@ const TokenListingDashboard = () => {
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
                     {(() => {
                       if (compareExchanges.length === 0) {
-                        return `${displayedCoverageOverview?.averageCoverage || 0}%`;
+                        return displayedCoverageOverview?.averageCoverage ? 
+                          `${displayedCoverageOverview.averageCoverage}%` : 'No data';
                       }
                       // Calculate what % of compare exchange tokens are also on primary exchange
                       const allTokens = parityData?.tokens || [];
@@ -872,7 +921,6 @@ const TokenListingDashboard = () => {
                           default: return false;
                         }
                       }).length;
-                      
                       const compareTotal = tokensOnCompareExchanges.length || 1;
                       return `${Math.round((matchingTokens / compareTotal) * 100)}%`;
                     })()
@@ -904,7 +952,7 @@ const TokenListingDashboard = () => {
                 </div>
                 <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                   <span style={{ fontSize: '20px', fontWeight: '700', color: '#ffffff' }}>
-                    {displayedCoverageOverview?.exclusiveListings || 0}
+                    {displayedCoverageOverview?.exclusiveListings ?? 'No data'}
                   </span>
                 </div>
                 <div style={{ fontSize: '9px', color: '#6b7280', marginTop: '4px', lineHeight: '1.2' }}>
@@ -1153,23 +1201,57 @@ const TokenListingDashboard = () => {
           <div style={{
             marginBottom: '24px'
           }}>
-            <div>
-              <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
-                Token Gaps Analysis
-              </h2>
-              <p style={{ fontSize: '14px', color: '#9ca3af', margin: '4px 0 0 0' }}>
-                {compareExchanges.length > 0 
-                  ? `Showing ${totalFilteredTokens} listing opportunities: tokens available on ${compareExchanges.join(', ')} but missing from ${primaryExchange}`
-                  : `Showing all ${totalFilteredTokens} tokens with exchange coverage analysis`
-                }
-                {sortColumn && ` • Sorted by ${sortColumn === 'marketCap' ? 'Market Cap' : sortColumn === 'name' ? 'Name' : sortColumn === 'volume' ? 'Volume' : 'Coverage'} (${sortDirection === 'desc' ? 'High to Low' : 'Low to High'})`}
-              </p>
-              <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0 0', fontStyle: 'italic' }}>
-                {compareExchanges.length > 0 
-                  ? 'Click column headers to sort • "MISS" indicates tokens not available on your primary exchange'
-                  : 'Click column headers to sort • "MISS" indicates tokens not available on your base exchange'
-                }
-              </p>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between' }}>
+              <div>
+                <h2 style={{ fontSize: '18px', fontWeight: '600', color: '#ffffff', margin: 0 }}>
+                  Token Gaps Analysis
+                </h2>
+                <p style={{ fontSize: '14px', color: '#9ca3af', margin: '4px 0 0 0' }}>
+                  {compareExchanges.length > 0 
+                    ? `Showing ${totalFilteredTokens} listing opportunities: tokens available on ${compareExchanges.join(', ')} but missing from ${primaryExchange}`
+                    : `Showing ${totalFilteredTokens} of ${baseFilteredTokens.length} tokens with exchange coverage analysis`
+                  }
+                  {hiddenTokens.size > 0 && ` • ${hiddenTokens.size} hidden`}
+                  {sortColumn && ` • Sorted by ${sortColumn === 'marketCap' ? 'Market Cap' : sortColumn === 'name' ? 'Name' : sortColumn === 'volume' ? 'Volume' : 'Coverage'} (${sortDirection === 'desc' ? 'High to Low' : 'Low to High'})`}
+                </p>
+                <p style={{ fontSize: '12px', color: '#6b7280', margin: '4px 0 0 0', fontStyle: 'italic' }}>
+                  {compareExchanges.length > 0 
+                    ? 'Click column headers to sort • "MISS" indicates tokens not available on your primary exchange • Eye icon to hide tokens'
+                    : 'Click column headers to sort • "MISS" indicates tokens not available on your base exchange • Eye icon to hide tokens'
+                  }
+                </p>
+              </div>
+              
+              {hiddenTokens.size > 0 && (
+                <button
+                  onClick={handleShowAllHidden}
+                  style={{
+                    background: 'rgba(59, 130, 246, 0.1)',
+                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: '6px',
+                    color: '#3b82f6',
+                    fontSize: '12px',
+                    fontWeight: '500',
+                    padding: '6px 12px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s ease'
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)';
+                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.5)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(59, 130, 246, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(59, 130, 246, 0.3)';
+                  }}
+                >
+                  <EyeOff style={{ width: '14px', height: '14px' }} />
+                  Show {hiddenTokens.size} hidden
+                </button>
+              )}
             </div>
           </div>
             
@@ -1183,7 +1265,7 @@ const TokenListingDashboard = () => {
             {/* Table Header */}
             <div style={{
               display: 'grid',
-              gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr',
+              gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr 0.6fr',
               gap: '8px',
               padding: '12px 16px',
               background: '#1a1b23',
@@ -1360,6 +1442,7 @@ const TokenListingDashboard = () => {
                   </div>
                 )}
               </div>
+              <div style={{ textAlign: 'center' }}>Hide</div>
             </div>
 
             {/* Table Rows */}
@@ -1369,7 +1452,7 @@ const TokenListingDashboard = () => {
                   key={token.id} 
                   style={{
                     display: 'grid',
-                    gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr',
+                    gridTemplateColumns: '2.5fr 1.2fr 1fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 0.8fr 1fr 0.6fr',
                     gap: '8px',
                     padding: '12px 16px',
                     borderBottom: index < paginatedTokens.length - 1 ? '1px solid #2a2b35' : 'none',
@@ -1492,6 +1575,37 @@ const TokenListingDashboard = () => {
                       {token.coveragePercentage}%
                     </div>
                   </div>
+                  <div style={{ display: 'flex', justifyContent: 'center' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleHideToken(token.id);
+                      }}
+                      style={{
+                        background: 'transparent',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: '#9ca3af',
+                        padding: '4px',
+                        borderRadius: '4px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        transition: 'all 0.2s ease'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = '#2a2b35';
+                        e.currentTarget.style.color = '#ffffff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = 'transparent';
+                        e.currentTarget.style.color = '#9ca3af';
+                      }}
+                      title="Hide token"
+                    >
+                      <Eye style={{ width: '14px', height: '14px' }} />
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1505,7 +1619,10 @@ const TokenListingDashboard = () => {
             marginTop: '16px'
           }}>
             <div style={{ fontSize: '14px', color: '#9ca3af' }}>
-              Total: <span style={{ fontWeight: '500', color: '#ffffff' }}>{totalFilteredTokens}</span> rows
+              Showing: <span style={{ fontWeight: '500', color: '#ffffff' }}>{totalFilteredTokens}</span> rows
+              {hiddenTokens.size > 0 && (
+                <span> • <span style={{ color: '#f97316' }}>{hiddenTokens.size} hidden</span></span>
+              )}
               {totalFilteredTokens !== parityData?.totalRecords && (
                 <span> (filtered from {parityData?.totalRecords})</span>
               )}
